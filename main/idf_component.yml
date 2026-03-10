@@ -1,2 +1,5 @@
 dependencies:
-  espressif/esp_matter: "^1.4.0"
+  # Pin to a stable release known to build with ESP-IDF 5.5.2 toolchains.
+  # Newer esp_matter releases can pull connectedhomeip sources (e.g. closure-control)
+  # that currently fail with some GCC 14 / C++2b combinations.
+  espressif/esp_matter: "==1.3.0"

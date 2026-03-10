@@ -90,3 +90,19 @@ The sample currently initializes measured values statically. Replace this sectio
 
 Recommended next step:
 - Use I2C/SPI/GPIO sensor drivers and call `attribute::update(...)` for each new measurement.
+
+---
+
+## 6) Build failure note (GCC 14 / closure-control)
+
+If you hit a compile error inside `managed_components/espressif__esp_matter/.../closure-control-cluster-logic.cpp` with messages around `Nullable.h` and `std::optional` operator `==`, this project already addresses it by pinning `esp_matter` to `1.3.0` in `main/idf_component.yml`.
+
+After pulling these changes, clean and re-resolve managed components:
+
+```bash
+idf.py fullclean
+idf.py reconfigure
+idf.py build
+```
+
+The `freertos/task_snapshot.h ... no longer used` line in your log is a warning from a dependency and is not the fatal error.
