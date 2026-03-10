@@ -1,0 +1,9 @@
+{
+  "idf.espIdfPath": "${env:IDF_PATH}",
+  "idf.customExtraPaths": "${env:IDF_PATH}/tools",
+  "idf.adapterTargetName": "esp32c6",
+  "idf.openOcdConfigs": [
+    "board/esp32c6-builtin.cfg"
+  ],
+  "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}
