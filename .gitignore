@@ -1,0 +1,22 @@
+# ESP-IDF build outputs
+build/
+managed_components/
+dependencies.lock
+
+# ESP-IDF generated local config
+sdkconfig
+sdkconfig.old
+
+# VS Code local workspace state
+.vscode/*.db
+.vscode/ipch/
+
+# Binary artifacts
+*.bin
+*.elf
+*.map
+*.hex
+*.uf2
+*.o
+*.obj
+*.a
