@@ -7,8 +7,10 @@ CONFIG_OPENTHREAD_FTD=y
 CONFIG_OPENTHREAD_MTD=n
 CONFIG_CHIP_ENABLE_OPENTHREAD=y
 CONFIG_USE_MINIMAL_MDNS=n
-# Thread networks are IPv6-only; IPv4 stack is unnecessary and wastes RAM/flash
+# Thread networks are IPv6-only; IPv4 stack is unnecessary and wastes RAM/flash.
+# esp_matter requires both to be disabled together (checked at CMake configure time).
 CONFIG_DISABLE_IPV4=y
+CONFIG_LWIP_IPV4=n
 
 # BLE discovery for commissioning
 CONFIG_BT_ENABLED=y
