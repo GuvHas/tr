@@ -18,3 +18,14 @@ CONFIG_CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE=y
 # Matter + logging defaults
 CONFIG_ESP_MATTER_ENABLE_DATA_MODEL=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# mbedTLS features required by esp_matter/CHIP
+CONFIG_MBEDTLS_HKDF_C=y
+
+# Custom partition table to fit larger Matter binaries
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Flash size (required by custom partition table)
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"

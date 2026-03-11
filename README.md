@@ -1,108 +1,81 @@
-# Seed Studio XIAO ESP32-C6 Matter Thread Sensor (ESP-IDF 5.5.2)
+# Seed Studio XIAO ESP32-C6 Matter Thread FTD Starter (ESP-IDF 5.5.2)
 
-This repository contains a complete ESP-IDF project for a **Matter-over-Thread sensor device** targeting the **Seeed Studio XIAO ESP32-C6**.
+This repository contains a minimal ESP-IDF project for a **Matter-over-Thread Full Thread Device (FTD)** targeting the **Seeed Studio XIAO ESP32-C6**.
 
-The implementation uses:
-- **ESP-IDF 5.5.2** project layout and build system.
-- **ESP-Matter** as an IDF component (no edits to IDF libraries).
-- **Bluetooth LE commissioning** (device discoverable during commissioning).
-- **Thread networking** (joins an existing Thread network through Matter commissioning).
-- **Runtime rename support** through Matter's writable **Node Label** attribute, persisted in NVS.
-- Sensor endpoints ready for **Home Assistant Matter integration**:
-  - Temperature sensor endpoint.
-  - Illuminance (light level) sensor endpoint.
+The current focus is to provide a stable, compile-friendly baseline that:
+- boots Matter,
+- is discoverable for BLE commissioning,
+- joins an existing Thread network during commissioning,
+- and runs cleanly with current ESP-IDF/esp_matter toolchains.
+
+> Sensor endpoints and custom cluster logic were intentionally removed in this revision to prioritize successful build/runtime of the FTD device baseline.
 
 ---
 
 ## 1) Project structure
 
-- `CMakeLists.txt` – root ESP-IDF project file.
-- `sdkconfig.defaults` – defaults for ESP32-C6 + Thread + BLE Matter commissioning.
-- `main/idf_component.yml` – pins `espressif/esp_matter` dependency.
-- `main/app_main.cpp` – Matter node creation, endpoints, rename persistence.
-- `.vscode/settings.json` + `.vscode/extensions.json` – VS Code friendly setup.
+- `CMakeLists.txt` – root ESP-IDF project file + C++ standard compatibility handling.
+- `sdkconfig.defaults` – defaults for ESP32-C6 + OpenThread FTD + BLE commissioning.
+- `main/idf_component.yml` – `espressif/esp_matter` dependency.
+- `main/app_main.cpp` – minimal Matter node bootstrap and stack start.
+- `partitions.csv` – enlarged app partition layout for current Matter binary size.
+- `.vscode/settings.json` + `.vscode/extensions.json` – VS Code helper config.
 
 ---
 
-## 2) Design overview
+## 2) Runtime design
 
-### Commissioning and networking flow
-
-1. Device boots and starts Matter stack.
-2. Device advertises for Matter commissioning over **BLE**.
-3. A commissioner (Home Assistant Matter integration using a Thread Border Router) pairs with device.
-4. Commissioner provisions operational credentials and Thread dataset.
-5. Device joins the **existing Thread network**.
-
-### Renaming support
-
-- Default name is generated from MAC tail (for uniqueness): `XIAO-XXXXXX`.
-- The **Matter Node Label** attribute is writable.
-- Any update is saved in NVS (`app_cfg/node_label`) and restored on reboot.
-- This prevents having multiple devices with the same default name.
-
-### Home Assistant compatibility
-
-- Uses standard Matter sensor device types/clusters.
-- Home Assistant can discover:
-  - Temperature entity.
-  - Illuminance entity.
-- Device naming can be adjusted from Matter tooling that writes Node Label.
+1. Initialize NVS (with recoverable erase/retry flow).
+2. Create a minimal Matter node.
+3. Start Matter stack.
+4. Device advertises for BLE commissioning and receives Thread credentials from commissioner.
+5. Device joins Thread network as commissioned Matter node.
 
 ---
 
-## 3) Build and flash in VS Code
+## 3) Build and flash
 
-## Prerequisites
-- ESP-IDF **v5.5.2** installed and exported.
-- VS Code with **Espressif IDF extension**.
+### Prerequisites
+- ESP-IDF **v5.5.2+** exported.
+- VS Code + Espressif extension, or CLI `idf.py`.
 
-## Using VS Code (ESP-IDF extension)
-1. Open this folder in VS Code.
-2. Run **ESP-IDF: Set Espressif Device Target** -> `esp32c6`.
-3. Run **ESP-IDF: Build your project**.
-4. Run **ESP-IDF: Flash your project**.
-5. Monitor logs with **ESP-IDF: Monitor device**.
-
-## CLI equivalent
+### CLI
 ```bash
 idf.py set-target esp32c6
+idf.py reconfigure
 idf.py build
 idf.py -p <PORT> flash monitor
 ```
 
 ---
 
-## 4) Home Assistant integration notes
+## 4) Home Assistant commissioning
 
-1. Ensure Home Assistant has Matter + Thread configured (for example via SkyConnect or other Thread Border Router).
-2. Put device in commissioning mode (default after boot).
-3. Add device in Home Assistant Matter integration.
-4. On successful commissioning:
-   - Device moves to Thread network.
-   - Temperature and illuminance entities appear.
+1. Ensure HA Matter + Thread are configured.
+2. Add new Matter device in Home Assistant.
+3. Commission over BLE (QR/manual code as provided by your onboarding flow).
+4. HA provisions Thread credentials; device joins Thread network.
 
 ---
 
-## 5) Extending sensor logic
+## 5) Dependency / toolchain note
 
-The sample currently initializes measured values statically. Replace this section in `main/app_main.cpp` with your sensor readout logic and update Matter attributes periodically.
+This project tracks `espressif/esp_matter:^1.4.0`.
 
-Recommended next step:
-- Use I2C/SPI/GPIO sensor drivers and call `attribute::update(...)` for each new measurement.
+For GCC14-based environments where `esp_matter` may inject `-std=gnu++2b` for transitive connectedhomeip sources, root `CMakeLists.txt` forces and normalizes `esp_matter` target compile standard back to `gnu++17`.
 
----
 
-## 6) Dependency resolution notes
+If you see a linker error like `undefined reference to mbedtls_hkdf`, ensure `CONFIG_MBEDTLS_HKDF_C=y` is present (it is enabled in `sdkconfig.defaults` in this repo).
 
-This project tracks a current `esp_matter` release line (`^1.4.0`) and relies on the ESP-IDF component manager to resolve matching transitive versions (including `esp_insights` and `esp_diagnostics`).
 
-If CI fails during dependency solving or after changing version constraints, clear resolved artifacts and rebuild:
+If you see `app partition is too small for binary`, this repo already uses a custom `partitions.csv` with a larger `factory` app partition (3 MB).
+
+If CI reports partition generation with `--flash-size 2MB`, this project expects **4MB flash** (`CONFIG_ESPTOOLPY_FLASHSIZE="4MB"` in `sdkconfig.defaults`) to match the custom partition table.
+
+If dependency/build state gets stale in CI:
 
 ```bash
 rm -rf managed_components build dependencies.lock
 idf.py reconfigure
 idf.py build
 ```
-
-If an older lock file pins incompatible versions, removing `dependencies.lock` is required before reconfigure/build.
