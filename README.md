@@ -93,30 +93,16 @@ Recommended next step:
 
 ---
 
-## 6) Build failure note (GCC 14 / closure-control)
+## 6) Dependency resolution notes
 
-If you hit a compile error inside `managed_components/espressif__esp_matter/.../closure-control-cluster-logic.cpp` with messages around `Nullable.h` and `std::optional` operator `==`, this project already addresses it by pinning `esp_matter` to `1.3.0` in `main/idf_component.yml`.
+This project tracks a current `esp_matter` release line (`^1.4.0`) and relies on the ESP-IDF component manager to resolve matching transitive versions (including `esp_insights` and `esp_diagnostics`).
 
-After pulling these changes, clean and re-resolve managed components:
-
-```bash
-idf.py fullclean
-idf.py reconfigure
-idf.py build
-```
-
-The `freertos/task_snapshot.h ... no longer used` line in your log is a warning from a dependency and is not the fatal error.
-
-If you hit a CI error in `esp_insights_cbor_encoder.c` like:
-- `'SHA_SIZE' undeclared`
-- `rtc_store_non_critical_data_hdr_t has no member named 'dg'`
-
-this is a dependency resolution mismatch between `esp_insights` and `esp_diagnostics`. The project now pins both in `main/idf_component.yml` to a compatible release line (`~1.2.0`).
-
-For CI/local cleanup after changing dependency constraints:
+If CI fails during dependency solving or after changing version constraints, clear resolved artifacts and rebuild:
 
 ```bash
 rm -rf managed_components build dependencies.lock
 idf.py reconfigure
 idf.py build
 ```
+
+If an older lock file pins incompatible versions, removing `dependencies.lock` is required before reconfigure/build.

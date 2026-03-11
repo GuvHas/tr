@@ -53,9 +53,26 @@ void load_name_from_nvs()
 esp_err_t persist_name_to_nvs(const char *name)
 {
     nvs_handle_t handle;
-    ESP_RETURN_ON_ERROR(nvs_open(kNvsNamespace, NVS_READWRITE, &handle), kTag, "Failed to open NVS");
-    ESP_RETURN_ON_ERROR(nvs_set_str(handle, kNvsNameKey, name), kTag, "Failed to write node label");
-    ESP_RETURN_ON_ERROR(nvs_commit(handle), kTag, "Failed to commit node label");
+    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "Failed to open NVS: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    err = nvs_set_str(handle, kNvsNameKey, name);
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "Failed to write node label: %s", esp_err_to_name(err));
+        nvs_close(handle);
+        return err;
+    }
+
+    err = nvs_commit(handle);
+    if (err != ESP_OK) {
+        ESP_LOGE(kTag, "Failed to commit node label: %s", esp_err_to_name(err));
+        nvs_close(handle);
+        return err;
+    }
+
     nvs_close(handle);
     return ESP_OK;
 }
@@ -93,7 +110,13 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 
 extern "C" void app_main()
 {
-    ESP_ERROR_CHECK(nvs_flash_init());
+    esp_err_t nvs_init_err = nvs_flash_init();
+    if (nvs_init_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_init_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGW(kTag, "NVS init returned %s, erasing NVS and retrying", esp_err_to_name(nvs_init_err));
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        nvs_init_err = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(nvs_init_err);
 
     set_default_name_from_mac();
     load_name_from_nvs();
