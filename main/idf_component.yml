@@ -3,3 +3,10 @@ dependencies:
   # Newer esp_matter releases can pull connectedhomeip sources (e.g. closure-control)
   # that currently fail with some GCC 14 / C++2b combinations.
   espressif/esp_matter: "==1.3.0"
+
+  # Keep esp-insights/diagnostics on a mutually compatible line for esp-idf v5.5.2.
+  # Without pinning, CI can resolve a newer esp_insights that is incompatible with
+  # the diagnostics headers pulled in the same solve, causing SHA_SIZE / header.dg
+  # build failures in esp_insights_cbor_encoder.c.
+  espressif/esp_insights: "~1.2.0"
+  espressif/esp_diagnostics: "~1.2.0"

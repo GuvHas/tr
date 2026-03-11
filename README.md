@@ -106,3 +106,17 @@ idf.py build
 ```
 
 The `freertos/task_snapshot.h ... no longer used` line in your log is a warning from a dependency and is not the fatal error.
+
+If you hit a CI error in `esp_insights_cbor_encoder.c` like:
+- `'SHA_SIZE' undeclared`
+- `rtc_store_non_critical_data_hdr_t has no member named 'dg'`
+
+this is a dependency resolution mismatch between `esp_insights` and `esp_diagnostics`. The project now pins both in `main/idf_component.yml` to a compatible release line (`~1.2.0`).
+
+For CI/local cleanup after changing dependency constraints:
+
+```bash
+rm -rf managed_components build dependencies.lock
+idf.py reconfigure
+idf.py build
+```
