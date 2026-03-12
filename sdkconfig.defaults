@@ -17,7 +17,10 @@ CONFIG_CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE=y
 
 # Matter + logging defaults
 CONFIG_ESP_MATTER_ENABLE_DATA_MODEL=y
-CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+# Canonical integer form for the log-level choice (2 = INFO)
+CONFIG_LOG_DEFAULT_LEVEL=2
+# Suppress OpenThread debug/info chatter; NOTE keeps join/detach events visible
+CONFIG_OPENTHREAD_LOG_LEVEL_NOTE=y
 
 # mbedTLS features required by esp_matter/CHIP
 CONFIG_MBEDTLS_HKDF_C=y
