@@ -1,6 +1,8 @@
 # Name,   Type, SubType, Offset,   Size,      Flags
-nvs,      data, nvs,     0x9000,   0x6000,
-otadata,  data, ota,     0xf000,   0x2000,
-phy_init, data, phy,     0x11000,  0x1000,
+# NVS expanded to 48 KB (was 24 KB) to hold Matter fabric credentials,
+# ACL entries, group keys and Thread network credentials across multiple fabrics.
+# otadata removed: no ota_0/ota_1 partitions exist so it was non-functional.
+nvs,      data, nvs,     0x9000,   0xC000,
+phy_init, data, phy,     0x15000,  0x1000,
 factory,  app,  factory, 0x20000,  0x300000,
 coredump, data, coredump,0x320000, 0x20000,
