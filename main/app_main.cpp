@@ -16,7 +16,7 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
     (void)arg; // unused; suppress -Wunused-parameter / -Werror in strict builds
 
     using chip::DeviceLayer::DeviceEventType;
-    using chip::DeviceLayer::kConnectivity_Established;
+    using chip::DeviceLayer::kConnectivity_Established; // used by kCHIPoBLEAdvertisingChange
 
     switch (event->Type) {
     case DeviceEventType::kCommissioningComplete:
@@ -46,14 +46,9 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
                      ? "opened" : "closed");
         break;
 
-    case DeviceEventType::kThreadConnectivityChange:
-        // Lets the app react to Thread attach/detach without polling OpenThread APIs.
-        if (event->ThreadConnectivityChange.Result == kConnectivity_Established) {
-            ESP_LOGI(kTag, "Thread: attached to network");
-        } else {
-            ESP_LOGW(kTag, "Thread: detached from network");
-        }
-        break;
+    // kThreadConnectivityChange is absent from this CHIP SDK version.
+    // Thread attach/detach is instead observable via the OpenThread
+    // state-change callback (otSetStateChangedCallback) if needed.
 
     default:
         break;
