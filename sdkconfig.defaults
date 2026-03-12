@@ -5,6 +5,20 @@ CONFIG_IDF_TARGET="esp32c6"
 CONFIG_OPENTHREAD_ENABLED=y
 CONFIG_OPENTHREAD_FTD=y
 
+# Pin OpenThread router-role thresholds explicitly so behaviour is documented
+# and stable across SDK/OpenThread upgrades.
+#
+# MAX_ROUTERS=32: the Thread spec maximum; fine for any network size.
+# ROUTER_UPGRADE_THRESHOLD=16: a REED promotes to Router when the active
+#   router count is below this value. On a lone dev network the device will
+#   still attempt promotion (expected for an FTD), but with this value pinned
+#   the behaviour is deliberate and easy to reduce for MTD-style testing.
+# ROUTER_DOWNGRADE_THRESHOLD=23: a Router steps down when the count exceeds
+#   this value, preventing unnecessary multi-router churn on small networks.
+CONFIG_OPENTHREAD_MAX_ROUTERS=32
+CONFIG_OPENTHREAD_ROUTER_UPGRADE_THRESHOLD=16
+CONFIG_OPENTHREAD_ROUTER_DOWNGRADE_THRESHOLD=23
+
 # Persist Thread network credentials (key, PAN ID, channel) across reboots.
 # Without this the Thread interface must be re-commissioned after every power cycle.
 CONFIG_OPENTHREAD_NVS_PERSIST=y
