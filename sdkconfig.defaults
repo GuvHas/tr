@@ -23,6 +23,12 @@ CONFIG_CHIP_FACTORY_NAMESPACE_PARTITION_LABEL="nvs_matter"
 CONFIG_CHIP_CONFIG_NAMESPACE_PARTITION_LABEL="nvs_matter"
 CONFIG_ESP_MATTER_NVS_PART_NAME="nvs_matter"
 
+# FreeRTOS tick rate: 1000 Hz gives 1 ms resolution for MRP retransmission timers,
+# Thread MLE timeouts, and Matter subscription reporting intervals.
+# ESP32-C6 defaults to 100 Hz (10 ms resolution) which causes spurious retransmits
+# under marginal RF conditions. pdMS_TO_TICKS() in app code is unaffected.
+CONFIG_FREERTOS_HZ=1000
+
 # Matter + logging defaults
 CONFIG_ESP_MATTER_ENABLE_DATA_MODEL=y
 # Canonical integer form for the log-level choice (2 = INFO)
