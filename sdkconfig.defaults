@@ -45,3 +45,10 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # Flash size (required by custom partition table)
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# Activate the 128 KB coredump partition defined in partitions.csv.
+# ELF format allows the dump to be loaded directly into gdb via
+# `idf.py coredump-info` / `idf.py coredump-debug`.
+# Zero runtime overhead: the coredump handler only runs inside the panic path.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
