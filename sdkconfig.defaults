@@ -4,17 +4,14 @@ CONFIG_IDF_TARGET="esp32c6"
 # OpenThread + Matter over Thread + BLE commissioning
 CONFIG_OPENTHREAD_ENABLED=y
 CONFIG_OPENTHREAD_FTD=y
-CONFIG_OPENTHREAD_MTD=n
 CONFIG_CHIP_ENABLE_OPENTHREAD=y
-CONFIG_USE_MINIMAL_MDNS=n
-# Thread networks are IPv6-only; IPv4 stack is unnecessary and wastes RAM/flash.
-# esp_matter requires both to be disabled together (checked at CMake configure time).
-CONFIG_DISABLE_IPV4=y
-CONFIG_LWIP_IPV4=n
+
+# Persist Thread network credentials (key, PAN ID, channel) across reboots.
+# Without this the Thread interface must be re-commissioned after every power cycle.
+CONFIG_OPENTHREAD_NVS_PERSIST=y
 
 # BLE discovery for commissioning
 CONFIG_BT_ENABLED=y
-CONFIG_BT_BLUEDROID_ENABLED=n
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE=y
 
@@ -34,8 +31,3 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # Flash size (required by custom partition table)
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
-CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
-
-# Extend task watchdog to 30 s to cover the slow Matter+Thread initialisation
-# sequence inside esp_matter::start() without triggering a spurious reset
-CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
