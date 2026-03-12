@@ -1,4 +1,4 @@
-# Seed Studio XIAO ESP32-C6 Matter Thread FTD Starter (ESP-IDF 5.5.2)
+# Seed Studio XIAO ESP32-C6 Matter Thread FTD Starter (ESP-IDF 5.5.3)
 
 This repository contains a minimal ESP-IDF project for a **Matter-over-Thread Full Thread Device (FTD)** targeting the **Seeed Studio XIAO ESP32-C6**.
 
@@ -36,7 +36,7 @@ The current focus is to provide a stable, compile-friendly baseline that:
 ## 3) Build and flash
 
 ### Prerequisites
-- ESP-IDF **v5.5.2+** exported.
+- ESP-IDF **v5.5.3+** exported.
 - VS Code + Espressif extension, or CLI `idf.py`.
 
 ### CLI
@@ -70,7 +70,7 @@ If you see a linker error like `undefined reference to mbedtls_hkdf`, ensure `CO
 
 If you see `app partition is too small for binary`, this repo already uses a custom `partitions.csv` with a larger `factory` app partition (3 MB).
 
-If CI reports partition generation with `--flash-size 2MB`, this project expects **4MB flash** (`CONFIG_ESPTOOLPY_FLASHSIZE="4MB"` in `sdkconfig.defaults`) to match the custom partition table.
+If CI reports partition generation with `--flash-size 2MB`, this project expects **4MB flash** (`CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y` in `sdkconfig.defaults`) to match the custom partition table.
 
 If dependency/build state gets stale in CI:
 
