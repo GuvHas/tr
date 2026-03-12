@@ -4,7 +4,6 @@ CONFIG_IDF_TARGET="esp32c6"
 # OpenThread + Matter over Thread + BLE commissioning
 CONFIG_OPENTHREAD_ENABLED=y
 CONFIG_OPENTHREAD_FTD=y
-CONFIG_CHIP_ENABLE_OPENTHREAD=y
 
 # Persist Thread network credentials (key, PAN ID, channel) across reboots.
 # Without this the Thread interface must be re-commissioned after every power cycle.
@@ -13,7 +12,7 @@ CONFIG_OPENTHREAD_NVS_PERSIST=y
 # BLE discovery for commissioning
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
-CONFIG_CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE=y
+CONFIG_ENABLE_CHIPOBLE=y
 
 # Matter + logging defaults
 CONFIG_ESP_MATTER_ENABLE_DATA_MODEL=y
