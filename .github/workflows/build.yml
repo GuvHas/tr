@@ -19,6 +19,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Cache managed components
+        uses: actions/cache@v4
+        with:
+          path: |
+            managed_components
+            dependencies.lock
+          key: ${{ runner.os }}-components-${{ hashFiles('main/idf_component.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-components-
+
       - name: Build with ESP-IDF
         uses: espressif/esp-idf-ci-action@v1
         with:

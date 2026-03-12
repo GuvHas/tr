@@ -12,12 +12,18 @@ project(xiao_esp32c6_matter_sensor)
 # esp_matter currently injects -std=gnu++2b for its target on some versions.
 # That overrides the project standard and reintroduces the closure-control error.
 # Normalize esp_matter target flags back to gnu++17.
+#
+# Target name follows ESP-IDF component manager convention: __idf_<namespace>__<name>
+# Strip the bad flag from both COMPILE_OPTIONS (used when compiling this target's own
+# sources) and INTERFACE_COMPILE_OPTIONS (propagated to every consumer of the target,
+# including the main component).
 if(TARGET __idf_espressif__esp_matter)
-    get_target_property(_esp_matter_compile_opts __idf_espressif__esp_matter COMPILE_OPTIONS)
-    if(_esp_matter_compile_opts)
-        list(FILTER _esp_matter_compile_opts EXCLUDE REGEX "^-std=gnu\\+\\+2b$")
-        list(FILTER _esp_matter_compile_opts EXCLUDE REGEX "^-std=c\\+\\+2b$")
-        set_target_properties(__idf_espressif__esp_matter PROPERTIES COMPILE_OPTIONS "${_esp_matter_compile_opts}")
-    endif()
+    foreach(_prop COMPILE_OPTIONS INTERFACE_COMPILE_OPTIONS)
+        get_target_property(_opts __idf_espressif__esp_matter ${_prop})
+        if(_opts)
+            list(FILTER _opts EXCLUDE REGEX "^-std=(gnu|c)\\+\\+2b$")
+            set_target_properties(__idf_espressif__esp_matter PROPERTIES ${_prop} "${_opts}")
+        endif()
+    endforeach()
     target_compile_options(__idf_espressif__esp_matter PRIVATE -std=gnu++17)
 endif()

@@ -1,4 +1,4 @@
 dependencies:
-  # Use a current esp_matter line and let component manager resolve compatible transitive deps
-  # (including esp_insights / esp_diagnostics) to avoid manual version conflicts.
-  espressif/esp_matter: "^1.4.0"
+  # Pinned to an exact version for reproducible builds. Bump intentionally after
+  # verifying the GCC14 workaround and API compatibility in CMakeLists.txt.
+  espressif/esp_matter: "==1.4.0"

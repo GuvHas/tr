@@ -1,4 +1,4 @@
-# Seed Studio XIAO ESP32-C6 Matter Thread FTD Starter (ESP-IDF 5.5.2)
+# Seed Studio XIAO ESP32-C6 Matter Thread FTD Starter (ESP-IDF 5.5.3)
 
 This repository contains a minimal ESP-IDF project for a **Matter-over-Thread Full Thread Device (FTD)** targeting the **Seeed Studio XIAO ESP32-C6**.
 
@@ -36,7 +36,7 @@ The current focus is to provide a stable, compile-friendly baseline that:
 ## 3) Build and flash
 
 ### Prerequisites
-- ESP-IDF **v5.5.2+** exported.
+- ESP-IDF **v5.5.3** exported (matches CI; earlier patch releases may work but are untested).
 - VS Code + Espressif extension, or CLI `idf.py`.
 
 ### CLI
@@ -60,7 +60,7 @@ idf.py -p <PORT> flash monitor
 
 ## 5) Dependency / toolchain note
 
-This project tracks `espressif/esp_matter:^1.4.0`.
+This project pins `espressif/esp_matter:==1.4.0` for reproducible builds. Bump the version in `main/idf_component.yml` intentionally after verifying GCC14 workaround and API compatibility.
 
 For GCC14-based environments where `esp_matter` may inject `-std=gnu++2b` for transitive connectedhomeip sources, root `CMakeLists.txt` forces and normalizes `esp_matter` target compile standard back to `gnu++17`.
 
