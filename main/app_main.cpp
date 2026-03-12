@@ -58,7 +58,7 @@ extern "C" void app_main()
     ESP_LOGI(kTag, "Starting Matter stack (BLE commissioning + Thread FTD)");
     ESP_ERROR_CHECK(start(app_event_cb));
 
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(5000));
-    }
+    // app_main's task is no longer needed — the Matter stack owns its own tasks.
+    // Deleting here reclaims the ~8 KB default stack and TCB immediately.
+    vTaskDelete(nullptr);
 }
