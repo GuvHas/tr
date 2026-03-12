@@ -14,16 +14,19 @@ project(xiao_esp32c6_matter_sensor)
 # Normalize esp_matter target flags back to gnu++17.
 #
 # Target name follows ESP-IDF component manager convention: __idf_<namespace>__<name>
-# Strip the bad flag from both COMPILE_OPTIONS (used when compiling this target's own
-# sources) and INTERFACE_COMPILE_OPTIONS (propagated to every consumer of the target,
-# including the main component).
+#
+# NOTE: Only COMPILE_OPTIONS (private to this target's own sources) is touched here.
+# DO NOT manipulate INTERFACE_COMPILE_OPTIONS: esp_matter stores generator expressions
+# and force-include flags for the CHIP project config (e.g. CHIPProjectConfig.h) in
+# that property. Running them through list(FILTER)/set_target_properties corrupts those
+# entries and causes CHIP_SYSTEM_CONFIG_USE_LWIP to be undefined in all consumers,
+# resulting in a hard #error in connectedhomeip/src/system/SystemConfig.h.
 if(TARGET __idf_espressif__esp_matter)
-    foreach(_prop COMPILE_OPTIONS INTERFACE_COMPILE_OPTIONS)
-        get_target_property(_opts __idf_espressif__esp_matter ${_prop})
-        if(_opts)
-            list(FILTER _opts EXCLUDE REGEX "^-std=(gnu|c)\\+\\+2b$")
-            set_target_properties(__idf_espressif__esp_matter PROPERTIES ${_prop} "${_opts}")
-        endif()
-    endforeach()
+    get_target_property(_esp_matter_compile_opts __idf_espressif__esp_matter COMPILE_OPTIONS)
+    if(_esp_matter_compile_opts)
+        list(FILTER _esp_matter_compile_opts EXCLUDE REGEX "^-std=gnu\\+\\+2b$")
+        list(FILTER _esp_matter_compile_opts EXCLUDE REGEX "^-std=c\\+\\+2b$")
+        set_target_properties(__idf_espressif__esp_matter PROPERTIES COMPILE_OPTIONS "${_esp_matter_compile_opts}")
+    endif()
     target_compile_options(__idf_espressif__esp_matter PRIVATE -std=gnu++17)
 endif()
