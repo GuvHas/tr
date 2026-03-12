@@ -1,6 +1,8 @@
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_matter.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <nvs_flash.h>
 
 using namespace esp_matter;
@@ -21,6 +23,9 @@ extern "C" void app_main()
 {
     esp_err_t nvs_init_err = nvs_flash_init();
     if (nvs_init_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_init_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // WARNING: erasing NVS destroys all Matter fabric credentials and Thread network
+        // data, forcing full re-commissioning. Acceptable for a dev baseline; production
+        // firmware should handle this case without a blanket erase.
         ESP_LOGW(kTag, "NVS init returned %s, erasing NVS and retrying", esp_err_to_name(nvs_init_err));
         ESP_ERROR_CHECK(nvs_flash_erase());
         nvs_init_err = nvs_flash_init();
@@ -35,7 +40,7 @@ extern "C" void app_main()
     }
 
     ESP_LOGI(kTag, "Starting Matter stack (BLE commissioning + Thread FTD)");
-    ESP_ERROR_CHECK(esp_matter::start(app_event_cb));
+    ESP_ERROR_CHECK(start(app_event_cb));
 
     while (true) {
         vTaskDelay(pdMS_TO_TICKS(5000));
