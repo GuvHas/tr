@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-project(xiao_esp32c6_matter_sensor)
+project(xiao_esp32c6_matter_ftd)
 
 # esp_matter currently injects -std=gnu++2b for its target on some versions.
 # That overrides the project standard and reintroduces the closure-control error.
