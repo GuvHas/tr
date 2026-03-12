@@ -18,14 +18,14 @@ The current focus is to provide a stable, compile-friendly baseline that:
 - `sdkconfig.defaults` – defaults for ESP32-C6 + OpenThread FTD + BLE commissioning.
 - `main/idf_component.yml` – `espressif/esp_matter` dependency.
 - `main/app_main.cpp` – minimal Matter node bootstrap and stack start.
-- `partitions.csv` – custom partition table: NVS expanded to 48 KB for multi-fabric Matter credentials, `otadata` removed (no OTA slots), 3 MB `factory` app partition.
+- `partitions.csv` – custom partition table: two NVS partitions (`nvs` 24 KB general state, `nvs_matter` 24 KB Matter/Thread credentials), `otadata` removed (no OTA slots), 3 MB `factory` app partition.
 - `.vscode/settings.json` + `.vscode/extensions.json` – VS Code helper config.
 
 ---
 
 ## 2) Runtime design
 
-1. Initialize NVS (with recoverable erase/retry flow).
+1. Initialize two NVS partitions: `nvs` (auto-erasable on corruption) and `nvs_matter` (Matter/Thread credentials — never auto-erased; `abort()` on corruption to force deliberate factory reset).
 2. Create a minimal Matter node.
 3. Start Matter stack.
 4. Device advertises for BLE commissioning and receives Thread credentials from commissioner.
@@ -71,6 +71,8 @@ If you see a linker error like `undefined reference to mbedtls_hkdf`, ensure `CO
 If you see `app partition is too small for binary`, this repo already uses a custom `partitions.csv` with a larger `factory` app partition (3 MB).
 
 `CONFIG_OPENTHREAD_NVS_PERSIST=y` is set in `sdkconfig.defaults` to persist Thread network credentials (network key, PAN ID, channel) across reboots. Without it the device must be re-commissioned after every power cycle.
+
+Matter fabric credentials, Thread network data, and ACL entries are stored in the dedicated `nvs_matter` partition (routed via `CONFIG_CHIP_FACTORY_NAMESPACE_PARTITION_LABEL`, `CONFIG_CHIP_CONFIG_NAMESPACE_PARTITION_LABEL`, and `CONFIG_ESP_MATTER_NVS_PART_NAME`). General app state uses the separate `nvs` partition which is auto-erased on corruption. If `nvs_matter` becomes unreadable the firmware calls `abort()` — reflash and recommission deliberately rather than silently losing fabric membership.
 
 If CI reports partition generation with `--flash-size 2MB`, this project expects **4MB flash** (`CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y` in `sdkconfig.defaults`) to match the custom partition table.
 

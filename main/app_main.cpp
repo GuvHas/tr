@@ -21,16 +21,26 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 
 extern "C" void app_main()
 {
-    esp_err_t nvs_init_err = nvs_flash_init();
-    if (nvs_init_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_init_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-        // WARNING: erasing NVS destroys all Matter fabric credentials and Thread network
-        // data, forcing full re-commissioning. Acceptable for a dev baseline; production
-        // firmware should handle this case without a blanket erase.
-        ESP_LOGW(kTag, "NVS init returned %s, erasing NVS and retrying", esp_err_to_name(nvs_init_err));
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        nvs_init_err = nvs_flash_init();
+    // General-purpose NVS partition: safe to auto-erase on corruption since it
+    // holds no credentials. Matter data is in the separate nvs_matter partition.
+    esp_err_t nvs_err = nvs_flash_init_partition("nvs");
+    if (nvs_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGE(kTag, "General NVS unrecoverable (%s), erasing", esp_err_to_name(nvs_err));
+        ESP_ERROR_CHECK(nvs_flash_erase_partition("nvs"));
+        nvs_err = nvs_flash_init_partition("nvs");
     }
-    ESP_ERROR_CHECK(nvs_init_err);
+    ESP_ERROR_CHECK(nvs_err);
+
+    // Matter credentials partition: fabric keys, ACL entries, Thread network data.
+    // Never auto-erased — if corrupt the device must be factory-reset deliberately
+    // rather than silently losing fabric membership.
+    esp_err_t nvs_matter_err = nvs_flash_init_partition("nvs_matter");
+    if (nvs_matter_err == ESP_ERR_NVS_NO_FREE_PAGES || nvs_matter_err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_LOGE(kTag, "Matter NVS unrecoverable (%s) — manual factory reset required",
+                 esp_err_to_name(nvs_matter_err));
+        abort();
+    }
+    ESP_ERROR_CHECK(nvs_matter_err);
 
     node::config_t node_config;
     node_t *node = node::create(&node_config, nullptr, nullptr);

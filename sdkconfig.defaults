@@ -14,6 +14,15 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_ENABLE_CHIPOBLE=y
 
+# Route Matter credentials to the protected nvs_matter partition so they are
+# never auto-erased when the general nvs partition is wiped on corruption.
+# Factory data (discriminator, verifier), operational config (fabrics, ACLs,
+# group keys), and esp_matter non-volatile attributes are all stored here.
+# Message counters and KVS remain on the default nvs partition (loss is safe).
+CONFIG_CHIP_FACTORY_NAMESPACE_PARTITION_LABEL="nvs_matter"
+CONFIG_CHIP_CONFIG_NAMESPACE_PARTITION_LABEL="nvs_matter"
+CONFIG_ESP_MATTER_NVS_PART_NAME="nvs_matter"
+
 # Matter + logging defaults
 CONFIG_ESP_MATTER_ENABLE_DATA_MODEL=y
 # Canonical integer form for the log-level choice (2 = INFO)
