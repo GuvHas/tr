@@ -28,26 +28,24 @@ CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
 CONFIG_ENABLE_CHIPOBLE=y
 
-# Partition routing for Matter NVS namespaces:
+# Route all Matter credentials to the protected nvs_matter partition.
 #
-# nvs_matter (never auto-erased) — holds only truly write-once factory data:
-#   discriminator, PAKE verifier, device attestation material, and the
-#   fabric operational credentials written during commissioning.
-#   These must survive a general NVS wipe; losing them = full re-commissioning.
+# FACTORY namespace: setup payload data (discriminator, PAKE verifier, device
+#   attestation certs). Truly write-once after manufacture.
 #
-# nvs (auto-erased on corruption) — holds operational config:
-#   ACL entries, subscription state, attribute overrides.
-#   This data changes on every controller interaction; routing it to nvs_matter
-#   would accelerate flash wear on a sector that can only be cleared by a
-#   deliberate factory reset. Losing ACLs on nvs corruption requires
-#   re-authorisation by a commissioner but the device stays commissioned
-#   (fabric identity remains intact in nvs_matter).
+# CONFIG namespace: the CHIP fabric table (Root CA, NOC, operational keys) plus
+#   ACL entries, group keys, and subscription state. The fabric table is written
+#   once at commissioning but must survive any NVS recovery event — routing it to
+#   the auto-erase nvs partition would cause silent fabric loss if nvs is ever
+#   wiped for recovery (see app_main.cpp), requiring full re-commissioning.
+#   Flash wear from ACL/subscription writes is acceptable for a prototype device
+#   with few controllers and infrequent ACL changes.
 #
-# CONFIG_ESP_MATTER_NVS_PART_NAME covers esp_matter-internal attribute
-# persistence; kept on nvs_matter as attribute writes are infrequent for
-# a sensor/actuator device with few writable attributes.
+# CONFIG_ESP_MATTER_NVS_PART_NAME: esp_matter-internal attribute persistence.
+#   All three namespaces must be on nvs_matter to prevent any commissioning
+#   state from being auto-erased during NVS recovery.
 CONFIG_CHIP_FACTORY_NAMESPACE_PARTITION_LABEL="nvs_matter"
-CONFIG_CHIP_CONFIG_NAMESPACE_PARTITION_LABEL="nvs"
+CONFIG_CHIP_CONFIG_NAMESPACE_PARTITION_LABEL="nvs_matter"
 CONFIG_ESP_MATTER_NVS_PART_NAME="nvs_matter"
 
 # OTA Software Update Requestor cluster: disabled because this partition table
