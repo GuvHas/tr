@@ -18,7 +18,7 @@ The current focus is to provide a stable, compile-friendly baseline that:
 - `sdkconfig.defaults` – defaults for ESP32-C6 + OpenThread FTD + BLE commissioning.
 - `main/idf_component.yml` – `espressif/esp_matter` dependency.
 - `main/app_main.cpp` – minimal Matter node bootstrap and stack start.
-- `partitions.csv` – enlarged app partition layout for current Matter binary size.
+- `partitions.csv` – custom partition table: NVS expanded to 48 KB for multi-fabric Matter credentials, `otadata` removed (no OTA slots), 3 MB `factory` app partition.
 - `.vscode/settings.json` + `.vscode/extensions.json` – VS Code helper config.
 
 ---
@@ -69,6 +69,8 @@ If you see a linker error like `undefined reference to mbedtls_hkdf`, ensure `CO
 
 
 If you see `app partition is too small for binary`, this repo already uses a custom `partitions.csv` with a larger `factory` app partition (3 MB).
+
+`CONFIG_OPENTHREAD_NVS_PERSIST=y` is set in `sdkconfig.defaults` to persist Thread network credentials (network key, PAN ID, channel) across reboots. Without it the device must be re-commissioned after every power cycle.
 
 If CI reports partition generation with `--flash-size 2MB`, this project expects **4MB flash** (`CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y` in `sdkconfig.defaults`) to match the custom partition table.
 
