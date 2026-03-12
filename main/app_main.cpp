@@ -13,13 +13,47 @@ constexpr const char *kTag = "xiao-matter";
 
 void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 {
-    if (event->Type == chip::DeviceLayer::DeviceEventType::kCommissioningComplete) {
-        ESP_LOGI(kTag, "Matter commissioning complete; device joined operational fabric/thread network");
+    (void)arg; // unused; suppress -Wunused-parameter / -Werror in strict builds
+
+    // DeviceEventType is a namespace of integer constants in this CHIP SDK version,
+    // not an enum class. Use a namespace alias — a using-declaration is illegal here.
+    namespace DevEvt = chip::DeviceLayer::DeviceEventType;
+
+    switch (event->Type) {
+    case DevEvt::kCommissioningComplete:
+        ESP_LOGI(kTag, "Commissioning complete; joined operational fabric");
         // Shut down the BLE stack: frees ~60-80 KB DRAM and releases the shared
         // 2.4 GHz radio arbiter on ESP32-C6 so Thread has uncontested radio access.
         // Safe to call here — the CHIP commissioning session has already closed the
         // BLE connection before firing this event.
         chip::DeviceLayer::Internal::BLEMgr().Shutdown();
+        break;
+
+    case DevEvt::kFabricRemoved:
+        // Fired when a controller removes this device (e.g. "Remove Device" in HA).
+        // Log prominently so decommissioning is visible without a logic analyser.
+        ESP_LOGW(kTag, "Fabric removed — device decommissioned; re-commissioning required");
+        break;
+
+    case DevEvt::kServerReady:
+        // All Matter endpoints and clusters are initialised and accepting commands.
+        ESP_LOGI(kTag, "Matter server ready");
+        break;
+
+    case DevEvt::kCHIPoBLEAdvertisingChange:
+        // CHIPoBLEAdvertisingChange.Result is chip::DeviceLayer::ActivityChange,
+        // not ConnectivityChange. kActivity_Started = window opened; otherwise closed.
+        ESP_LOGI(kTag, "BLE commissioning window %s",
+                 event->CHIPoBLEAdvertisingChange.Result == chip::DeviceLayer::kActivity_Started
+                     ? "opened" : "closed");
+        break;
+
+    // kThreadConnectivityChange is absent from this CHIP SDK version.
+    // Thread attach/detach is instead observable via the OpenThread
+    // state-change callback (otSetStateChangedCallback) if needed.
+
+    default:
+        break;
     }
 }
 
