@@ -7,7 +7,10 @@ CONFIG_OPENTHREAD_FTD=y
 CONFIG_OPENTHREAD_MTD=n
 CONFIG_CHIP_ENABLE_OPENTHREAD=y
 CONFIG_USE_MINIMAL_MDNS=n
-CONFIG_DISABLE_IPV4=n
+# IPv4 cannot be disabled: connectedhomeip's network layer (CHIP_SYSTEM_CONFIG_USE_LWIP)
+# depends on the lwIP IPv4 stack being present. Disabling CONFIG_LWIP_IPV4 strips the
+# lwIP socket API that CHIP uses, causing a hard compile error in SystemConfig.h.
+# IPv4 traffic is not used on Thread, but the stack must remain compiled in.
 
 # BLE discovery for commissioning
 CONFIG_BT_ENABLED=y
@@ -17,7 +20,10 @@ CONFIG_CHIP_DEVICE_CONFIG_ENABLE_CHIPOBLE=y
 
 # Matter + logging defaults
 CONFIG_ESP_MATTER_ENABLE_DATA_MODEL=y
-CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+# Canonical integer form for the log-level choice (2 = INFO)
+CONFIG_LOG_DEFAULT_LEVEL=2
+# Suppress OpenThread debug/info chatter; NOTE keeps join/detach events visible
+CONFIG_OPENTHREAD_LOG_LEVEL_NOTE=y
 
 # mbedTLS features required by esp_matter/CHIP
 CONFIG_MBEDTLS_HKDF_C=y
@@ -29,3 +35,7 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # Flash size (required by custom partition table)
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Extend task watchdog to 30 s to cover the slow Matter+Thread initialisation
+# sequence inside esp_matter::start() without triggering a spurious reset
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30

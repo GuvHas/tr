@@ -9,15 +9,21 @@ set(CMAKE_CXX_EXTENSIONS ON)
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(xiao_esp32c6_matter_sensor)
 
-# esp_matter currently injects -std=gnu++2b for its target on some versions.
-# That overrides the project standard and reintroduces the closure-control error.
-# Normalize esp_matter target flags back to gnu++17.
+# esp_matter injects -std=gnu++2b on some toolchain/version combinations.
+# GCC 14 + gnu++2b fails to compile certain connectedhomeip closure-control sources.
+#
+# FIX: append -std=gnu++17 AFTER all existing flags via target_compile_options.
+# GCC processes -std= left-to-right and uses the LAST value, so this overrides
+# any injected -std=gnu++2b without touching the existing COMPILE_OPTIONS property.
+#
+# WHY NOT use get_target_property / list(FILTER) / set_target_properties:
+# esp_matter stores its CHIPProjectConfig.h force-include inside COMPILE_OPTIONS
+# using generator expressions that contain internal semicolons, e.g.:
+#   $<$<COMPILE_LANGUAGE:CXX>:-std=gnu++2b;-include /path/CHIPProjectConfig.h>
+# CMake's list() splits on ALL semicolons, so reading the property and setting it
+# back corrupts those entries - the force-include that defines
+# CHIP_SYSTEM_CONFIG_USE_LWIP is silently lost, causing a hard #error in
+# connectedhomeip/src/system/SystemConfig.h at every compilation unit.
 if(TARGET __idf_espressif__esp_matter)
-    get_target_property(_esp_matter_compile_opts __idf_espressif__esp_matter COMPILE_OPTIONS)
-    if(_esp_matter_compile_opts)
-        list(FILTER _esp_matter_compile_opts EXCLUDE REGEX "^-std=gnu\\+\\+2b$")
-        list(FILTER _esp_matter_compile_opts EXCLUDE REGEX "^-std=c\\+\\+2b$")
-        set_target_properties(__idf_espressif__esp_matter PROPERTIES COMPILE_OPTIONS "${_esp_matter_compile_opts}")
-    endif()
     target_compile_options(__idf_espressif__esp_matter PRIVATE -std=gnu++17)
 endif()
