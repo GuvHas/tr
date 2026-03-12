@@ -4,6 +4,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs_flash.h>
+#include <platform/internal/BLEManager.h>
 
 using namespace esp_matter;
 
@@ -14,6 +15,11 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 {
     if (event->Type == chip::DeviceLayer::DeviceEventType::kCommissioningComplete) {
         ESP_LOGI(kTag, "Matter commissioning complete; device joined operational fabric/thread network");
+        // Shut down the BLE stack: frees ~60-80 KB DRAM and releases the shared
+        // 2.4 GHz radio arbiter on ESP32-C6 so Thread has uncontested radio access.
+        // Safe to call here — the CHIP commissioning session has already closed the
+        // BLE connection before firing this event.
+        chip::DeviceLayer::Internal::BLEMgr().Shutdown();
     }
 }
 

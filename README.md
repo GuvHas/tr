@@ -30,6 +30,7 @@ The current focus is to provide a stable, compile-friendly baseline that:
 3. Start Matter stack.
 4. Device advertises for BLE commissioning and receives Thread credentials from commissioner.
 5. Device joins Thread network as commissioned Matter node.
+6. On `kCommissioningComplete`: BLE stack is shut down (`BLEMgr().Shutdown()`) to recover ~60–80 KB DRAM and yield the shared 2.4 GHz radio arbiter to Thread.
 
 ---
 
