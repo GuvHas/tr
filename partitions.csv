@@ -1,10 +1,17 @@
 # Name,      Type, SubType,  Offset,   Size,   Flags
 # Two NVS partitions to isolate Matter credentials from general app state:
 #   nvs        — general app state; safe to auto-erase on corruption.
-#   nvs_matter — Matter fabric credentials, Thread network data, ACL entries,
-#                group keys. Never auto-erased; requires deliberate factory reset.
+#   nvs_matter — factory data (discriminator, PAKE verifier, attestation material)
+#                and fabric operational credentials. Never auto-erased; requires
+#                deliberate factory reset. ACL entries and subscription state are
+#                stored in nvs (see CONFIG_CHIP_CONFIG_NAMESPACE_PARTITION_LABEL).
 # Combined NVS size unchanged (48 KB). phy_init offset unchanged at 0x15000.
-# otadata removed: no ota_0/ota_1 partitions exist so it was non-functional.
+# OTA intentionally unsupported: no ota_0/ota_1/otadata partitions in this table.
+#   This is a factory-only (non-updateable) prototype build. The Matter OTA
+#   Software Update Requestor cluster is disabled via CONFIG_ENABLE_OTA_REQUESTOR=n
+#   in sdkconfig.defaults to avoid advertising a capability that cannot be fulfilled.
+#   To add OTA: carve ota_0/ota_1 from the factory partition, add otadata,
+#   and remove the disabling config.
 #
 # nvs_keys: one sector (4 KB) reserved for NVS encryption key storage.
 #   Required layout: type=data, subtype=nvs_keys, exactly 4096 bytes, NOT encrypted.
