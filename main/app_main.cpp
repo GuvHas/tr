@@ -15,11 +15,12 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 {
     (void)arg; // unused; suppress -Wunused-parameter / -Werror in strict builds
 
-    using chip::DeviceLayer::DeviceEventType;
-    using chip::DeviceLayer::kConnectivity_Established; // used by kCHIPoBLEAdvertisingChange
+    // DeviceEventType is a namespace of integer constants in this CHIP SDK version,
+    // not an enum class. Use a namespace alias — a using-declaration is illegal here.
+    namespace DevEvt = chip::DeviceLayer::DeviceEventType;
 
     switch (event->Type) {
-    case DeviceEventType::kCommissioningComplete:
+    case DevEvt::kCommissioningComplete:
         ESP_LOGI(kTag, "Commissioning complete; joined operational fabric");
         // Shut down the BLE stack: frees ~60-80 KB DRAM and releases the shared
         // 2.4 GHz radio arbiter on ESP32-C6 so Thread has uncontested radio access.
@@ -28,21 +29,22 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
         chip::DeviceLayer::Internal::BLEMgr().Shutdown();
         break;
 
-    case DeviceEventType::kFabricRemoved:
+    case DevEvt::kFabricRemoved:
         // Fired when a controller removes this device (e.g. "Remove Device" in HA).
         // Log prominently so decommissioning is visible without a logic analyser.
         ESP_LOGW(kTag, "Fabric removed — device decommissioned; re-commissioning required");
         break;
 
-    case DeviceEventType::kServerReady:
+    case DevEvt::kServerReady:
         // All Matter endpoints and clusters are initialised and accepting commands.
         ESP_LOGI(kTag, "Matter server ready");
         break;
 
-    case DeviceEventType::kCHIPoBLEAdvertisingChange:
-        // Tracks commissioning-window open/close for status indicators or logging.
+    case DevEvt::kCHIPoBLEAdvertisingChange:
+        // CHIPoBLEAdvertisingChange.Result is chip::DeviceLayer::ActivityChange,
+        // not ConnectivityChange. kActivity_Started = window opened; otherwise closed.
         ESP_LOGI(kTag, "BLE commissioning window %s",
-                 event->CHIPoBLEAdvertisingChange.Result == kConnectivity_Established
+                 event->CHIPoBLEAdvertisingChange.Result == chip::DeviceLayer::kActivity_Started
                      ? "opened" : "closed");
         break;
 
