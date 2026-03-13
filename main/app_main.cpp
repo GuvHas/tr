@@ -4,7 +4,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs_flash.h>
-#include <platform/ConfigurationManager.h>
+#include <platform/CommissionableDataProvider.h>
+#include <platform/DeviceInstanceInfoProvider.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <platform/internal/BLEManager.h>
 
@@ -57,14 +58,19 @@ void printCommissioningCodes()
     uint32_t passcode      = 0;
     uint16_t discriminator = 0, vid = 0, pid = 0;
 
-    if (chip::DeviceLayer::ConfigurationMgr().GetSetupPinCode(passcode)      != CHIP_NO_ERROR ||
-        chip::DeviceLayer::ConfigurationMgr().GetSetupDiscriminator(discriminator) != CHIP_NO_ERROR) {
+    auto *cdp = chip::DeviceLayer::GetCommissionableDataProvider();
+    if (!cdp ||
+        cdp->GetSetupPasscode(passcode)      != CHIP_NO_ERROR ||
+        cdp->GetSetupDiscriminator(discriminator) != CHIP_NO_ERROR) {
         ESP_LOGE(kTag, "Cannot read setup payload from NVS");
         return;
     }
     // VID/PID default to 0 for test/development builds — ignore errors.
-    chip::DeviceLayer::ConfigurationMgr().GetVendorId(vid);
-    chip::DeviceLayer::ConfigurationMgr().GetProductId(pid);
+    auto *diip = chip::DeviceLayer::GetDeviceInstanceInfoProvider();
+    if (diip) {
+        diip->GetVendorId(vid);
+        diip->GetProductId(pid);
+    }
 
     // 88-bit QR payload layout (Matter spec §5.1.3.1):
     //   version(3) VID(16) PID(16) flow(2) rendezvous(8) discriminator(12) passcode(27) pad(4)
