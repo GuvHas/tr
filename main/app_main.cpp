@@ -46,11 +46,9 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 
     case DevEvt::kServerReady:
         // All Matter endpoints and clusters are initialised and accepting commands.
-        ESP_LOGI(kTag, "Matter server ready");
-        // kCommissioningComplete only fires during the initial commissioning flow.
-        // On every subsequent boot the device is already in a fabric, so that event
-        // never fires and BLE would stay up permanently, consuming ~60-80 KB DRAM.
-        // Shut it down here when we are already commissioned.
+        // The CHIP server automatically logs the QR code and manual pairing code
+        // during Server::Init() under the chip[SVR] tag — no explicit call needed.
+        ESP_LOGI(kTag, "Matter server ready — check chip[SVR] logs for QR/pairing code");
         if (chip::Server::GetInstance().GetFabricTable().FabricCount() > 0) {
             shutdownBLE();
         }
