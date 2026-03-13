@@ -4,6 +4,8 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs_flash.h>
+#include <platform/CommissionableDataProvider.h>
+#include <platform/DeviceInstanceInfoProvider.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <platform/internal/BLEManager.h>
 
@@ -20,6 +22,75 @@ void shutdownBLE()
 {
     chip::DeviceLayer::Internal::BLEMgr().Shutdown();
     ESP_LOGI(kTag, "BLE stack shut down");
+}
+
+// Stuff numBits bits of val (LSB first) into buf starting at bit offset bitOff.
+static void stuffBits(uint8_t *buf, int bitOff, uint32_t val, int numBits)
+{
+    for (int i = 0; i < numBits; ++i) {
+        if ((val >> i) & 1u)
+            buf[(bitOff + i) / 8] |= (uint8_t)(1u << ((bitOff + i) % 8));
+    }
+}
+
+// Base38-encode src (srcLen bytes) into dst.
+// 3-byte chunks → 5 chars; a trailing 2-byte chunk → 3 chars.
+static constexpr char kB38[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-.";
+static size_t base38Encode(const uint8_t *src, size_t srcLen, char *dst, size_t dstCap)
+{
+    size_t di = 0;
+    for (size_t si = 0; si < srcLen;) {
+        size_t nb = (si + 3 <= srcLen) ? 3u : (srcLen - si);
+        size_t nc = (nb == 3) ? 5u : 3u;
+        uint32_t v = 0;
+        for (size_t k = 0; k < nb; ++k) v |= (uint32_t)src[si + k] << (8 * k);
+        si += nb;
+        for (size_t k = 0; k < nc && di < dstCap; ++k, v /= 38) dst[di++] = kB38[v % 38];
+    }
+    return di;
+}
+
+// Print the commissioning QR code (MT:...) and raw discriminator/passcode.
+// The QR code encodes the 88-bit Matter setup payload (spec §5.1.3) and can
+// be scanned directly with Apple Home, Google Home, or any Matter controller.
+void printCommissioningCodes()
+{
+    uint32_t passcode      = 0;
+    uint16_t discriminator = 0, vid = 0, pid = 0;
+
+    auto *cdp = chip::DeviceLayer::GetCommissionableDataProvider();
+    if (!cdp ||
+        cdp->GetSetupPasscode(passcode)      != CHIP_NO_ERROR ||
+        cdp->GetSetupDiscriminator(discriminator) != CHIP_NO_ERROR) {
+        ESP_LOGE(kTag, "Cannot read setup payload from NVS");
+        return;
+    }
+    // VID/PID default to 0 for test/development builds — ignore errors.
+    auto *diip = chip::DeviceLayer::GetDeviceInstanceInfoProvider();
+    if (diip) {
+        diip->GetVendorId(vid);
+        diip->GetProductId(pid);
+    }
+
+    // 88-bit QR payload layout (Matter spec §5.1.3.1):
+    //   version(3) VID(16) PID(16) flow(2) rendezvous(8) discriminator(12) passcode(27) pad(4)
+    uint8_t payload[11] = {};
+    stuffBits(payload,  0, 0,             3);  // version = 0
+    stuffBits(payload,  3, vid,          16);
+    stuffBits(payload, 19, pid,          16);
+    stuffBits(payload, 35, 0,             2);  // standard commissioning flow
+    stuffBits(payload, 37, 0x02,          8);  // BLE rendezvous flag
+    stuffBits(payload, 45, discriminator, 12);
+    stuffBits(payload, 57, passcode,      27);
+    // bits [84:87]: padding = 0 (already zero-initialised)
+
+    // 11 bytes → 18 base38 chars; "MT:" prefix → 21-char QR string
+    char qr[24] = "MT:";
+    size_t n = base38Encode(payload, sizeof(payload), qr + 3, sizeof(qr) - 4);
+    qr[3 + n] = '\0';
+
+    ESP_LOGI(kTag, "SetupQRCode: [%s]", qr);
+    ESP_LOGI(kTag, "Manual entry — discriminator: %u  passcode: %u", discriminator, (unsigned)passcode);
 }
 
 void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
@@ -46,10 +117,13 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 
     case DevEvt::kServerReady:
         // All Matter endpoints and clusters are initialised and accepting commands.
-        // The CHIP server automatically logs the QR code and manual pairing code
-        // during Server::Init() under the chip[SVR] tag — no explicit call needed.
-        ESP_LOGI(kTag, "Matter server ready — check chip[SVR] logs for QR/pairing code");
-        if (chip::Server::GetInstance().GetFabricTable().FabricCount() > 0) {
+        ESP_LOGI(kTag, "Matter server ready");
+        if (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
+            // Not yet commissioned: print the QR code and pairing info so the
+            // commissioning payload is visible without any external tool.
+            printCommissioningCodes();
+        } else {
+            // Already in a fabric on reboot: BLE is not needed.
             shutdownBLE();
         }
         break;
