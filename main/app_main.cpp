@@ -115,25 +115,15 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
         ESP_LOGW(kTag, "Fabric removed — device decommissioned; re-commissioning required");
         break;
 
-    case DevEvt::kServerReady:
-        // All Matter endpoints and clusters are initialised and accepting commands.
-        ESP_LOGI(kTag, "Matter server ready");
-        if (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
-            // Not yet commissioned: print the QR code and pairing info so the
-            // commissioning payload is visible without any external tool.
+    case DevEvt::kCHIPoBLEAdvertisingChange:
+        if (event->CHIPoBLEAdvertisingChange.Result == chip::DeviceLayer::kActivity_Started) {
+            ESP_LOGI(kTag, "BLE commissioning window opened");
+            // Print codes the first time advertising starts so the user has them
+            // immediately when the phone discovers the device.
             printCommissioningCodes();
         } else {
-            // Already in a fabric on reboot: BLE is not needed.
-            shutdownBLE();
+            ESP_LOGI(kTag, "BLE commissioning window closed");
         }
-        break;
-
-    case DevEvt::kCHIPoBLEAdvertisingChange:
-        // CHIPoBLEAdvertisingChange.Result is chip::DeviceLayer::ActivityChange,
-        // not ConnectivityChange. kActivity_Started = window opened; otherwise closed.
-        ESP_LOGI(kTag, "BLE commissioning window %s",
-                 event->CHIPoBLEAdvertisingChange.Result == chip::DeviceLayer::kActivity_Started
-                     ? "opened" : "closed");
         break;
 
     // kThreadConnectivityChange is absent from this CHIP SDK version.
