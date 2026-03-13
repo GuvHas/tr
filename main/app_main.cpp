@@ -17,10 +17,8 @@ constexpr const char *kTag = "xiao-matter";
 // context once commissioning state is no longer needed.
 void shutdownBLE()
 {
-    if (CHIP_ERROR err = chip::DeviceLayer::Internal::BLEMgr().Shutdown();
-        err != CHIP_NO_ERROR) {
-        ESP_LOGE(kTag, "BLE shutdown failed: %s", chip::ErrorStr(err));
-    }
+    chip::DeviceLayer::Internal::BLEMgr().Shutdown();
+    ESP_LOGI(kTag, "BLE stack shut down");
 }
 
 void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
