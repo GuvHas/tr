@@ -83,3 +83,11 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 # Zero runtime overhead: the coredump handler only runs inside the panic path.
 CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
 CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y
+
+# app_main performs two nvs_flash_init_partition() calls and esp_matter::start()
+# (mbedTLS init + OpenThread stack bringup) before vTaskDelete(nullptr).
+# The Matter/Thread init path consumes 6-7 KB on ESP32-C6; the IDF default of
+# 3584 bytes causes a stack overflow with no visible panic (canary fires after
+# the fact). 8192 bytes provides sufficient headroom. The stack is released
+# immediately when vTaskDelete(nullptr) is called at the end of app_main.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
