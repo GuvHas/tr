@@ -11,6 +11,18 @@ using namespace esp_matter;
 namespace {
 constexpr const char *kTag = "xiao-matter";
 
+// Shut down the BLE stack and log any error. Frees ~60-80 KB DRAM and
+// releases the shared 2.4 GHz radio arbiter on ESP32-C6 so Thread has
+// uncontested radio access. Safe to call from any device-layer event
+// context once commissioning state is no longer needed.
+void shutdownBLE()
+{
+    if (CHIP_ERROR err = chip::DeviceLayer::Internal::BLEMgr().Shutdown();
+        err != CHIP_NO_ERROR) {
+        ESP_LOGE(kTag, "BLE shutdown failed: %s", chip::ErrorStr(err));
+    }
+}
+
 void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 {
     (void)arg; // unused; suppress -Wunused-parameter / -Werror in strict builds
@@ -22,11 +34,9 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
     switch (event->Type) {
     case DevEvt::kCommissioningComplete:
         ESP_LOGI(kTag, "Commissioning complete; joined operational fabric");
-        // Shut down the BLE stack: frees ~60-80 KB DRAM and releases the shared
-        // 2.4 GHz radio arbiter on ESP32-C6 so Thread has uncontested radio access.
-        // Safe to call here — the CHIP commissioning session has already closed the
-        // BLE connection before firing this event.
-        chip::DeviceLayer::Internal::BLEMgr().Shutdown();
+        // BLE is no longer needed: the commissioning session has already closed
+        // the BLE connection before firing this event.
+        shutdownBLE();
         break;
 
     case DevEvt::kFabricRemoved:
@@ -38,6 +48,13 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
     case DevEvt::kServerReady:
         // All Matter endpoints and clusters are initialised and accepting commands.
         ESP_LOGI(kTag, "Matter server ready");
+        // kCommissioningComplete only fires during the initial commissioning flow.
+        // On every subsequent boot the device is already in a fabric, so that event
+        // never fires and BLE would stay up permanently, consuming ~60-80 KB DRAM.
+        // Shut it down here when we are already commissioned.
+        if (chip::Server::GetInstance().GetFabricTable().FabricCount() > 0) {
+            shutdownBLE();
+        }
         break;
 
     case DevEvt::kCHIPoBLEAdvertisingChange:
@@ -85,7 +102,7 @@ extern "C" void app_main()
     }
     ESP_ERROR_CHECK(nvs_matter_err);
 
-    node::config_t node_config;
+    node::config_t node_config{};
     node_t *node = node::create(&node_config, nullptr, nullptr);
     if (!node) {
         ESP_LOGE(kTag, "Matter node initialization failed");
