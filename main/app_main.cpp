@@ -112,7 +112,7 @@ extern "C" void app_main()
     // platform config MUST be set before esp_matter::start() initialises the
     // Thread stack.  On ESP32-C6 the 802.15.4 radio is built-in (NATIVE mode);
     // no external co-processor or UART host connection is required.
-    static const esp_openthread_platform_config_t ot_platform_config = {
+    static esp_openthread_platform_config_t ot_platform_config = {
         .radio_config = {
             .radio_mode = RADIO_MODE_NATIVE,
         },
@@ -125,7 +125,7 @@ extern "C" void app_main()
             .task_queue_size        = 10,
         },
     };
-    esp_openthread_platform_config_set(&ot_platform_config);
+    ESP_ERROR_CHECK(set_openthread_platform_config(&ot_platform_config));
 
     ESP_LOGI(kTag, "Starting Matter stack (BLE commissioning + Thread FTD)");
     ESP_ERROR_CHECK(start(app_event_cb));
