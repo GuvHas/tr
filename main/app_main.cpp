@@ -1,3 +1,4 @@
+#include <app/server/OnboardingCodesUtil.h>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_matter.h>
@@ -47,11 +48,13 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
     case DevEvt::kServerReady:
         // All Matter endpoints and clusters are initialised and accepting commands.
         ESP_LOGI(kTag, "Matter server ready");
-        // kCommissioningComplete only fires during the initial commissioning flow.
-        // On every subsequent boot the device is already in a fabric, so that event
-        // never fires and BLE would stay up permanently, consuming ~60-80 KB DRAM.
-        // Shut it down here when we are already commissioned.
-        if (chip::Server::GetInstance().GetFabricTable().FabricCount() > 0) {
+        // Print the QR code URL and 11-digit manual pairing code so the
+        // commissioning payload is visible in the monitor without a separate tool.
+        // Only meaningful when the device has no fabric yet (not yet commissioned).
+        if (chip::Server::GetInstance().GetFabricTable().FabricCount() == 0) {
+            PrintOnboardingCodes(
+                chip::RendezvousInformationFlags(chip::RendezvousInformationFlag::kBLE));
+        } else {
             shutdownBLE();
         }
         break;
