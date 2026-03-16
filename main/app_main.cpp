@@ -90,7 +90,32 @@ void printCommissioningCodes()
     qr[3 + n] = '\0';
 
     ESP_LOGI(kTag, "SetupQRCode: [%s]", qr);
-    ESP_LOGI(kTag, "Manual entry — discriminator: %u  passcode: %u", discriminator, (unsigned)passcode);
+
+    // 11-digit manual pairing code (Matter spec §5.1.4.1, standard flow, no VID/PID).
+    // Uses the short discriminator (top 4 bits of the 12-bit long discriminator).
+    // Layout: chunk1(1) chunk2(5) chunk3(4) checkDigit(1)
+    uint8_t  sd = (uint8_t)((discriminator >> 8) & 0xF); // short discriminator
+    uint32_t c1 = (uint32_t)(sd >> 2);                   // top 2 bits of short disc
+    uint32_t c2 = ((uint32_t)(sd & 0x3) << 14) | (passcode >> 13); // low 2 bits + top 14 bits of passcode
+    uint32_t c3 = passcode & 0x1FFFu;                    // bottom 13 bits of passcode
+
+    char tenDigits[11];
+    snprintf(tenDigits, sizeof(tenDigits), "%01u%05u%04u", (unsigned)c1, (unsigned)c2, (unsigned)c3);
+
+    // Luhn-variant checksum (same as CHIP SDK SetupPayloadHelper computeChecksum)
+    uint32_t chkNum = 0;
+    for (int i = 0; i < 10; ++i) chkNum = chkNum * 10 + (uint32_t)(tenDigits[i] - '0');
+    uint32_t chkSum = 0;
+    bool alt = true;
+    for (uint32_t n2 = chkNum; n2 > 0; n2 /= 10) {
+        uint32_t d = n2 % 10;
+        if (alt) { d *= 2; if (d > 9) d -= 9; }
+        chkSum += d;
+        alt = !alt;
+    }
+    uint32_t checkDigit = (10 - (chkSum % 10)) % 10;
+
+    ESP_LOGI(kTag, "ManualPairingCode: [%s%u]", tenDigits, (unsigned)checkDigit);
 }
 
 void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
