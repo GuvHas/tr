@@ -50,6 +50,43 @@ static size_t base38Encode(const uint8_t *src, size_t srcLen, char *dst, size_t 
     return di;
 }
 
+// Verhoeff10 checksum — same algorithm as CHIP SDK Verhoeff10::ComputeCheckChar().
+// Iterates the digit string right-to-left; uses the standard dihedral-group-5
+// multiply table, the permutation table, and the inverse table.
+static const uint8_t kVD[10][10] = {
+    {0,1,2,3,4,5,6,7,8,9},
+    {1,2,3,4,0,6,7,8,9,5},
+    {2,3,4,0,1,7,8,9,5,6},
+    {3,4,0,1,2,8,9,5,6,7},
+    {4,0,1,2,3,9,5,6,7,8},
+    {5,9,8,7,6,0,4,3,2,1},
+    {6,5,9,8,7,1,0,4,3,2},
+    {7,6,5,9,8,2,1,0,4,3},
+    {8,7,6,5,9,3,2,1,0,4},
+    {9,8,7,6,5,4,3,2,1,0},
+};
+static const uint8_t kVP[8][10] = {
+    {0,1,2,3,4,5,6,7,8,9},
+    {1,5,7,6,2,8,3,0,9,4},
+    {5,8,0,3,7,9,6,1,4,2},
+    {8,9,1,6,0,4,3,5,2,7},
+    {9,4,5,3,1,2,6,8,7,0},
+    {4,2,8,6,5,7,3,9,0,1},
+    {2,7,9,3,8,0,6,4,1,5},
+    {7,0,4,6,9,1,3,2,5,8},
+};
+static const uint8_t kVInv[10] = {0,4,3,2,1,5,6,7,8,9};
+
+static uint32_t verhoeff10Check(const char *s, size_t len)
+{
+    int c = 0;
+    for (size_t i = len; i > 0; --i) {
+        int p = kVP[(len - i + 1) % 8][(uint8_t)(s[i - 1] - '0')];
+        c = kVD[c][p];
+    }
+    return kVInv[c];
+}
+
 // Print the commissioning QR code (MT:...) and raw discriminator/passcode.
 // The QR code encodes the 88-bit Matter setup payload (spec §5.1.3) and can
 // be scanned directly with Apple Home, Google Home, or any Matter controller.
@@ -94,26 +131,16 @@ void printCommissioningCodes()
     // 11-digit manual pairing code (Matter spec §5.1.4.1, standard flow, no VID/PID).
     // Uses the short discriminator (top 4 bits of the 12-bit long discriminator).
     // Layout: chunk1(1) chunk2(5) chunk3(4) checkDigit(1)
-    uint8_t  sd = (uint8_t)((discriminator >> 8) & 0xF); // short discriminator
-    uint32_t c1 = (uint32_t)(sd >> 2);                   // top 2 bits of short disc
-    uint32_t c2 = ((uint32_t)(sd & 0x3) << 14) | (passcode >> 13); // low 2 bits + top 14 bits of passcode
-    uint32_t c3 = passcode & 0x1FFFu;                    // bottom 13 bits of passcode
+    uint8_t  sd = (uint8_t)((discriminator >> 8) & 0xF); // short discriminator (top 4 bits)
+    uint32_t c1 = (uint32_t)(sd >> 2);                               // top 2 bits of short disc
+    uint32_t c2 = ((uint32_t)(sd & 0x3) << 14) | (passcode & 0x3FFFu); // low 2 bits of sd + lower 14 bits of passcode
+    uint32_t c3 = passcode >> 14;                                        // upper 13 bits of passcode
 
     char tenDigits[11];
     snprintf(tenDigits, sizeof(tenDigits), "%01u%05u%04u", (unsigned)c1, (unsigned)c2, (unsigned)c3);
 
-    // Luhn-variant checksum (same as CHIP SDK SetupPayloadHelper computeChecksum)
-    uint32_t chkNum = 0;
-    for (int i = 0; i < 10; ++i) chkNum = chkNum * 10 + (uint32_t)(tenDigits[i] - '0');
-    uint32_t chkSum = 0;
-    bool alt = true;
-    for (uint32_t n2 = chkNum; n2 > 0; n2 /= 10) {
-        uint32_t d = n2 % 10;
-        if (alt) { d *= 2; if (d > 9) d -= 9; }
-        chkSum += d;
-        alt = !alt;
-    }
-    uint32_t checkDigit = (10 - (chkSum % 10)) % 10;
+    // Verhoeff10 check digit — matches CHIP SDK Verhoeff10::ComputeCheckChar()
+    uint32_t checkDigit = verhoeff10Check(tenDigits, 10);
 
     ESP_LOGI(kTag, "ManualPairingCode: [%s%u]", tenDigits, (unsigned)checkDigit);
 }
