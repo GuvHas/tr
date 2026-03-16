@@ -136,7 +136,9 @@ void printCommissioningCodes()
     uint32_t c2 = ((uint32_t)(sd & 0x3) << 14) | (passcode & 0x3FFFu); // low 2 bits of sd + lower 14 bits of passcode
     uint32_t c3 = passcode >> 14;                                        // upper 13 bits of passcode
 
-    char tenDigits[11];
+    // Buffer is 16 bytes; actual output is always exactly 10 digits (c1≤3, c2≤65535, c3≤8191),
+    // but the wider buffer silences -Werror=format-truncation which can't prove the bound.
+    char tenDigits[16];
     snprintf(tenDigits, sizeof(tenDigits), "%01u%05u%04u", (unsigned)c1, (unsigned)c2, (unsigned)c3);
 
     // Verhoeff10 check digit — matches CHIP SDK Verhoeff10::ComputeCheckChar()
