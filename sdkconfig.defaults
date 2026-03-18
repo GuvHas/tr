@@ -54,16 +54,30 @@ CONFIG_ESP_MATTER_NVS_PART_NAME="nvs_matter"
 # To enable OTA: add ota_0, ota_1, and otadata partitions, then remove this line.
 CONFIG_ENABLE_OTA_REQUESTOR=n
 
-# Disable the WiFi driver so esp_matter does not register a WiFi
-# NetworkCommissioning cluster at startup. Without this, the framework
-# automatically starts the WiFi layer ("Starting ESP WiFi layer") and advertises
-# both WiFi and Thread interfaces to the commissioner. HA's matter-server then
-# picks WiFi over Thread even when a Thread Border Router is present.
+# Disable CHIP's WiFi NetworkCommissioning driver and WiFi station so that
+# only the Thread NetworkCommissioning cluster is advertised to commissioners.
 #
-# On ESP32-C6 the BLE controller uses a separate driver path from the WiFi
-# driver (they share only the 2.4 GHz radio at the coex/phy level), so BLE
-# commissioning continues to work correctly with WiFi disabled.
-CONFIG_ESP_WIFI_ENABLED=n
+# Background: esp_matter::start() registers a NetworkCommissioning cluster for
+# every network interface CHIP was compiled with. On ESP32-C6 both WiFi and
+# Thread are supported in hardware, so without these settings CHIP registers
+# both clusters and Home Assistant's matter-server picks WiFi over Thread even
+# when a Thread Border Router is available.
+#
+# CONFIG_WIFI_NETWORK_COMMISSIONING_DRIVER=n
+#   Removes the WiFi NetworkCommissioning cluster entirely. The commissioner
+#   sees only Thread and is forced to push Thread credentials over BLE.
+#   Defined in connectedhomeip/config/esp32/components/chip/Kconfig.
+#
+# CONFIG_ENABLE_WIFI_STATION=n
+#   Prevents CHIP's device-layer from starting the WiFi station ("Starting
+#   ESP WiFi layer"), eliminating the reconnect loop seen in the logs when
+#   the commissioner still tries to connect via the now-absent WiFi cluster.
+#   Defined in connectedhomeip/config/esp32/components/chip/Kconfig.
+#
+# BLE commissioning is unaffected: NimBLE uses the BLE controller driver
+# independently of CHIP's WiFi station management.
+CONFIG_WIFI_NETWORK_COMMISSIONING_DRIVER=n
+CONFIG_ENABLE_WIFI_STATION=n
 
 # FreeRTOS tick rate: 1000 Hz gives 1 ms resolution for MRP retransmission timers,
 # Thread MLE timeouts, and Matter subscription reporting intervals.
