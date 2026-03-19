@@ -230,9 +230,26 @@ void trySrpServiceAdd(otInstance *ot)
     }
 }
 
+// Remove the _matter._tcp SRP service and host, instructing the OTBR to
+// withdraw the record.  Called when the CHIP fabric is removed so that stale
+// operational records are not left in the OTBR and proxied to mDNS.
+// Must be called from the CHIP/OpenThread task.
+void srpServiceRemove(otInstance *ot)
+{
+    if (!s_srp.added) return;
+    s_srp.added = false;
+    // aRemoveKeyLease=false: keep the SRP key lease so re-registration is fast.
+    // aSendUnregister=true:  send an SRP update to withdraw the record from OTBR.
+    otSrpClientRemoveHostAndServices(ot, false, true);
+    ESP_LOGI(kTag, "SRP: withdrew _matter._tcp service '%s'", s_srp.instanceName);
+}
+
 // OpenThread state-change callback: fires when the Thread role changes.
 // Schedules trySrpServiceAdd on the CHIP task so we can safely access the
 // fabric table from the correct thread context.
+// Also handles the re-commission-with-Thread-attached case: if Thread was
+// already up when a new fabric was committed, the role did not change, so
+// we additionally call trySrpServiceAdd from kFabricCommitted (see below).
 void onThreadStateChanged(uint32_t flags, void *ctx)
 {
     if (!(flags & OT_CHANGED_THREAD_ROLE)) return;
@@ -262,9 +279,14 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 
     case DevEvt::kFabricRemoved:
         // Fired when a controller removes this device (e.g. "Remove Device" in HA).
-        // Reset the SRP added flag so the service is re-registered on the next
-        // commissioning attempt (after Thread re-joins with new credentials).
-        s_srp.added = false;
+        // Explicitly withdraw the SRP service from the OpenThread client so the
+        // OTBR stops proxying the now-invalid _matter._tcp record to mDNS.
+        // Without this, stale operational records remain in the OTBR until reboot
+        // or the next explicit SRP update, allowing discovery of an unreachable node.
+        chip::DeviceLayer::PlatformMgr().ScheduleWork([](intptr_t) {
+            otInstance *ot = esp_openthread_get_instance();
+            if (ot) srpServiceRemove(ot);
+        }, 0);
         ESP_LOGW(kTag, "Fabric removed — device decommissioned; re-commissioning required");
         break;
 
