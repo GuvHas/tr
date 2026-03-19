@@ -5,8 +5,11 @@
 #include <freertos/task.h>
 #include <nvs_flash.h>
 #include <openthread/srp_client.h>
+#include <openthread/link.h>
+#include <openthread/thread.h>
 #include <platform/CommissionableDataProvider.h>
 #include <platform/DeviceInstanceInfoProvider.h>
+#include <app/server/Server.h>
 #include <esp_openthread.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <platform/internal/BLEManager.h>
@@ -149,6 +152,98 @@ void printCommissioningCodes()
     ESP_LOGI(kTag, "ManualPairingCode: [%s%u]", tenDigits, (unsigned)checkDigit);
 }
 
+// ---------------------------------------------------------------------------
+// SRP operational advertisement for Matter over Thread
+//
+// The CHIP SDK's ESP32 DNS-SD implementation publishes _matter._tcp via the
+// esp-idf mDNS library, which fails (error 46) when WiFi is disabled.  It does
+// NOT fall back to OpenThread SRP.  Without an SRP registration the OTBR has
+// no record to proxy to mDNS, so the commissioner cannot locate the device for
+// the CASE session and CommissioningComplete is never sent.
+//
+// Fix: we manually manage the SRP host name and the _matter._tcp service via
+// the OpenThread SRP client API.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Static SRP service record.  OpenThread holds raw pointers into this
+// structure; it must outlive the SRP client session.
+struct SrpCtx {
+    otSrpClientService svc           = {};
+    char               instanceName[34] = {};  // "<16-hex>-<16-hex>\0"
+    otDnsTxtEntry      txt[2]        = {};
+    bool               added         = false;
+} s_srp;
+
+// Try to add the _matter._tcp SRP service.
+// Must be called from the CHIP/OpenThread task (e.g. inside ScheduleWork).
+void trySrpServiceAdd(otInstance *ot)
+{
+    if (s_srp.added) return;
+    if (otThreadGetDeviceRole(ot) <= OT_DEVICE_ROLE_DETACHED) return;
+
+    // Look up the first provisioned fabric to build the instance name.
+    const chip::FabricInfo *fabric = nullptr;
+    for (const auto &f : chip::Server::GetInstance().GetFabricTable()) {
+        fabric = &f;
+        break;
+    }
+    if (!fabric) {
+        ESP_LOGD(kTag, "SRP service: no fabric yet, will retry on next Thread role change");
+        return;
+    }
+
+    // Instance name: <16-char CFID>-<16-char NodeId> uppercase hex (Matter spec §4.3.1.1.2).
+    snprintf(s_srp.instanceName, sizeof(s_srp.instanceName),
+             "%016llX-%016llX",
+             (unsigned long long)fabric->GetCompressedFabricId(),
+             (unsigned long long)fabric->GetNodeId());
+
+    // TXT records: SII = Session Idle Interval (ms), SAI = Session Active Interval (ms).
+    static const uint8_t kSII[] = "5000";
+    static const uint8_t kSAI[] = "300";
+    s_srp.txt[0].mKey         = "SII";
+    s_srp.txt[0].mValue       = kSII;
+    s_srp.txt[0].mValueLength = 4;
+    s_srp.txt[1].mKey         = "SAI";
+    s_srp.txt[1].mValue       = kSAI;
+    s_srp.txt[1].mValueLength = 3;
+
+    // Clear internal OT linked-list pointers before (re-)registering.
+    s_srp.svc = {};
+    s_srp.svc.mInstanceName  = s_srp.instanceName;
+    s_srp.svc.mName          = "_matter._tcp";
+    s_srp.svc.mSubTypeLabels = nullptr;
+    s_srp.svc.mTxtEntries    = s_srp.txt;
+    s_srp.svc.mNumTxtEntries = 2;
+    s_srp.svc.mPort          = 5540;  // CHIP_PORT
+    s_srp.svc.mPriority      = 0;
+    s_srp.svc.mWeight        = 0;
+
+    otError err = otSrpClientAddService(ot, &s_srp.svc);
+    if (err == OT_ERROR_NONE || err == OT_ERROR_ALREADY) {
+        s_srp.added = true;
+        ESP_LOGI(kTag, "SRP: queued _matter._tcp service as '%s'", s_srp.instanceName);
+    } else {
+        ESP_LOGE(kTag, "SRP: otSrpClientAddService => %d (will retry)", (int)err);
+    }
+}
+
+// OpenThread state-change callback: fires when the Thread role changes.
+// Schedules trySrpServiceAdd on the CHIP task so we can safely access the
+// fabric table from the correct thread context.
+void onThreadStateChanged(uint32_t flags, void *ctx)
+{
+    if (!(flags & OT_CHANGED_THREAD_ROLE)) return;
+    auto *ot = static_cast<otInstance *>(ctx);
+    chip::DeviceLayer::PlatformMgr().ScheduleWork(
+        [](intptr_t p) { trySrpServiceAdd(reinterpret_cast<otInstance *>(p)); },
+        reinterpret_cast<intptr_t>(ot));
+}
+
+} // anonymous namespace
+
 void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 {
     (void)arg; // unused; suppress -Wunused-parameter / -Werror in strict builds
@@ -167,7 +262,9 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 
     case DevEvt::kFabricRemoved:
         // Fired when a controller removes this device (e.g. "Remove Device" in HA).
-        // Log prominently so decommissioning is visible without a logic analyser.
+        // Reset the SRP added flag so the service is re-registered on the next
+        // commissioning attempt (after Thread re-joins with new credentials).
+        s_srp.added = false;
         ESP_LOGW(kTag, "Fabric removed — device decommissioned; re-commissioning required");
         break;
 
@@ -248,26 +345,51 @@ extern "C" void app_main()
     ESP_LOGI(kTag, "Starting Matter stack (BLE commissioning + Thread FTD)");
     ESP_ERROR_CHECK(start(app_event_cb));
 
-    // Work-around: enable OpenThread's SRP auto-host-address mode so the SRP
-    // client always tracks the Thread interface's addresses (ML-EID + on-mesh
-    // global addresses) as the SRP host address.
+    // SRP work-around for Matter-over-Thread on ESP32.
     //
-    // Without this the SRP client can be stuck in "Updated" state forever:
-    // it has the Matter operational service queued but otSrpClientSetHostAddresses()
-    // was never called by the CHIP SDK (a gap in its Thread-on-ESP32 integration
-    // when WiFi is also present in the build).  No host address → no SRP Update
-    // sent → OTBR never proxies the _matter._tcp record to mDNS → HA's
-    // matter-server cannot reach the device for CASE → FailSafe expires →
-    // commissioning rolled back.
+    // The CHIP SDK's ESP32 DNS-SD layer uses esp-idf mDNS, which fails (error 46)
+    // when WiFi is disabled.  It never falls back to OpenThread SRP.  We therefore
+    // manage the SRP host name and _matter._tcp service ourselves:
+    //
+    //  1. Set the SRP host name (derived from the 802.15.4 extended address).
+    //     Without a host name otSrpClientSendUpdate() returns kErrorInvalidState
+    //     immediately, so the SRP client stays in "Updated" forever even after
+    //     Thread joins and the SRP server is found.
+    //
+    //  2. Enable auto-host-address mode so the SRP client tracks the Thread
+    //     interface addresses automatically (ML-EID + OMR-prefix SLAAC).
+    //
+    //  3. Register an OpenThread state-change callback that adds the
+    //     _matter._tcp SRP service whenever Thread becomes a child or router
+    //     and a CHIP fabric is already provisioned.
     //
     // ScheduleWork() runs on the CHIP/OpenThread shared task, so it is safe to
     // call OpenThread APIs directly here without an explicit OpenThread lock.
     chip::DeviceLayer::PlatformMgr().ScheduleWork([](intptr_t) {
         otInstance *instance = esp_openthread_get_instance();
-        if (instance != nullptr) {
-            otSrpClientEnableAutoHostAddress(instance);
-            ESP_LOGI(kTag, "SRP auto-host-address enabled");
+        if (instance == nullptr) {
+            ESP_LOGW(kTag, "SRP setup: OpenThread instance unavailable");
+            return;
         }
+
+        // Build hostname from the 802.15.4 extended address (16 lowercase hex chars).
+        // OpenThread holds a pointer — the buffer must be static.
+        static char srpHostname[17];
+        const otExtAddress *ext = otLinkGetExtendedAddress(instance);
+        snprintf(srpHostname, sizeof(srpHostname), "%02x%02x%02x%02x%02x%02x%02x%02x",
+                 ext->m8[0], ext->m8[1], ext->m8[2], ext->m8[3],
+                 ext->m8[4], ext->m8[5], ext->m8[6], ext->m8[7]);
+        otSrpClientSetHostName(instance, srpHostname);
+        otSrpClientEnableAutoHostAddress(instance);
+        ESP_LOGI(kTag, "SRP: hostname '%s', auto-address enabled", srpHostname);
+
+        // Register our state-change callback to add _matter._tcp once Thread joins.
+        // otSetStateChangedCallback maintains a list; adding ours does not remove
+        // any callback already registered by the CHIP SDK.
+        otSetStateChangedCallback(instance, onThreadStateChanged, instance);
+
+        // Also try now for the reboot-with-existing-credentials case.
+        trySrpServiceAdd(instance);
     }, 0);
 
     // app_main's task is no longer needed — the Matter stack owns its own tasks.
