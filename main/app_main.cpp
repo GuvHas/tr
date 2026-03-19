@@ -7,6 +7,7 @@
 #include <openthread/srp_client.h>
 #include <platform/CommissionableDataProvider.h>
 #include <platform/DeviceInstanceInfoProvider.h>
+#include <esp_openthread.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
 #include <platform/internal/BLEManager.h>
 
