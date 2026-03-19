@@ -4,6 +4,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <nvs_flash.h>
+#include <openthread/srp_client.h>
 #include <platform/CommissionableDataProvider.h>
 #include <platform/DeviceInstanceInfoProvider.h>
 #include <platform/ESP32/OpenthreadLauncher.h>
@@ -245,6 +246,28 @@ extern "C" void app_main()
 
     ESP_LOGI(kTag, "Starting Matter stack (BLE commissioning + Thread FTD)");
     ESP_ERROR_CHECK(start(app_event_cb));
+
+    // Work-around: enable OpenThread's SRP auto-host-address mode so the SRP
+    // client always tracks the Thread interface's addresses (ML-EID + on-mesh
+    // global addresses) as the SRP host address.
+    //
+    // Without this the SRP client can be stuck in "Updated" state forever:
+    // it has the Matter operational service queued but otSrpClientSetHostAddresses()
+    // was never called by the CHIP SDK (a gap in its Thread-on-ESP32 integration
+    // when WiFi is also present in the build).  No host address → no SRP Update
+    // sent → OTBR never proxies the _matter._tcp record to mDNS → HA's
+    // matter-server cannot reach the device for CASE → FailSafe expires →
+    // commissioning rolled back.
+    //
+    // ScheduleWork() runs on the CHIP/OpenThread shared task, so it is safe to
+    // call OpenThread APIs directly here without an explicit OpenThread lock.
+    chip::DeviceLayer::PlatformMgr().ScheduleWork([](intptr_t) {
+        otInstance *instance = esp_openthread_get_instance();
+        if (instance != nullptr) {
+            otSrpClientEnableAutoHostAddress(instance);
+            ESP_LOGI(kTag, "SRP auto-host-address enabled");
+        }
+    }, 0);
 
     // app_main's task is no longer needed — the Matter stack owns its own tasks.
     // Deleting here reclaims the ~8 KB default stack and TCB immediately.
