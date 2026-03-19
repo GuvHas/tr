@@ -247,6 +247,14 @@ void srpServiceRemove(otInstance *ot)
 // OpenThread state-change callback: fires when the Thread role changes.
 // Schedules trySrpServiceAdd on the CHIP task so we can safely access the
 // fabric table from the correct thread context.
+//
+// This covers all practical re-commissioning flows: every Matter commissioner
+// must push Thread credentials via AddOrUpdateThreadNetwork + ConnectNetwork,
+// which applies a new dataset.  OpenThread always detaches briefly when a new
+// dataset is applied, so OT_CHANGED_THREAD_ROLE fires unconditionally and
+// trySrpServiceAdd() is scheduled before the device re-attaches with the new
+// fabric, without needing a FabricTable::Delegate whose virtual-method names
+// differ between SDK versions.
 void onThreadStateChanged(uint32_t flags, void *ctx)
 {
     if (!(flags & OT_CHANGED_THREAD_ROLE)) return;
@@ -255,22 +263,6 @@ void onThreadStateChanged(uint32_t flags, void *ctx)
         [](intptr_t p) { trySrpServiceAdd(reinterpret_cast<otInstance *>(p)); },
         reinterpret_cast<intptr_t>(ot));
 }
-
-// FabricTable delegate: triggers SRP service (re-)registration whenever a
-// fabric is added via AddNOC.  This covers the re-commission-with-Thread-
-// attached case: if Thread is already up when AddNOC fires, the Thread role
-// does not change, so onThreadStateChanged() never runs.  This delegate fires
-// independently of the Thread role, ensuring trySrpServiceAdd() is scheduled
-// from both sides of the "Thread attached AND fabric present" condition.
-class SrpFabricDelegate final : public chip::FabricTable::Delegate {
-    void OnFabricAdded(const chip::FabricTable &, chip::FabricIndex) override {
-        chip::DeviceLayer::PlatformMgr().ScheduleWork([](intptr_t) {
-            otInstance *ot = esp_openthread_get_instance();
-            if (ot) trySrpServiceAdd(ot);
-        }, 0);
-    }
-};
-static SrpFabricDelegate s_fabricDelegate;
 
 } // anonymous namespace
 
@@ -422,10 +414,6 @@ extern "C" void app_main()
         // otSetStateChangedCallback maintains a list; adding ours does not remove
         // any callback already registered by the CHIP SDK.
         otSetStateChangedCallback(instance, onThreadStateChanged, instance);
-
-        // Register the FabricTable delegate so trySrpServiceAdd() is also
-        // triggered by AddNOC when Thread is already attached (role unchanged).
-        chip::Server::GetInstance().GetFabricTable().AddFabricDelegate(&s_fabricDelegate);
 
         // Also try now for the reboot-with-existing-credentials case.
         trySrpServiceAdd(instance);
