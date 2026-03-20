@@ -1,3 +1,4 @@
+#include <driver/gpio.h>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_matter.h>
@@ -414,6 +415,13 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
 
 extern "C" void app_main()
 {
+    // Select the external antenna.
+    // GPIO03 low + GPIO14 high routes the RF switch to the U.FL connector.
+    gpio_set_direction(GPIO_NUM_3,  GPIO_MODE_OUTPUT);
+    gpio_set_direction(GPIO_NUM_14, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_3,  0);
+    gpio_set_level(GPIO_NUM_14, 1);
+
     // General-purpose NVS partition: auto-erased on unrecoverable corruption.
     // Holds only non-Matter app state; safe to wipe because all Matter
     // credentials live on the protected nvs_matter partition.

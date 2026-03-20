@@ -85,6 +85,9 @@ CONFIG_ENABLE_WIFI_STATION=n
 # under marginal RF conditions. pdMS_TO_TICKS() in app code is unaffected.
 CONFIG_FREERTOS_HZ=1000
 
+# Matter device product name shown in Home Assistant and other controllers.
+CONFIG_DEVICE_PRODUCT_NAME="GH LK Control"
+
 # Matter + logging defaults
 CONFIG_ESP_MATTER_ENABLE_DATA_MODEL=y
 # Canonical integer form for the log-level choice (2 = INFO)
