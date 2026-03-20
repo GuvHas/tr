@@ -167,14 +167,30 @@ void printCommissioningCodes()
 
 namespace {
 
-// Static SRP service record.  OpenThread holds raw pointers into this
-// structure; it must outlive the SRP client session.
+// Static SRP context.  OpenThread holds raw pointers into this structure;
+// it must outlive the SRP client session.
 struct SrpCtx {
-    otSrpClientService svc           = {};
+    otSrpClientService svc              = {};
     char               instanceName[34] = {};  // "<16-hex>-<16-hex>\0"
-    otDnsTxtEntry      txt[2]        = {};
-    bool               added         = false;
+    char               hostname[17]     = {};  // 16 hex chars + NUL
+    otDnsTxtEntry      txt[2]           = {};
+    bool               added            = false;
 } s_srp;
+
+// (Re-)apply the SRP host name and auto-address mode.
+// Must be called on the CHIP/OpenThread task.
+// otSrpClientClearHostAndServices() resets both, so this must be called
+// after any Clear before otSrpClientAddService() will succeed.
+void setupSrpHost(otInstance *ot)
+{
+    const otExtAddress *ext = otLinkGetExtendedAddress(ot);
+    snprintf(s_srp.hostname, sizeof(s_srp.hostname),
+             "%02x%02x%02x%02x%02x%02x%02x%02x",
+             ext->m8[0], ext->m8[1], ext->m8[2], ext->m8[3],
+             ext->m8[4], ext->m8[5], ext->m8[6], ext->m8[7]);
+    otSrpClientSetHostName(ot, s_srp.hostname);
+    otSrpClientEnableAutoHostAddress(ot);
+}
 
 // Try to add the _matter._tcp SRP service.
 // Must be called from the CHIP/OpenThread task (e.g. inside ScheduleWork).
@@ -304,11 +320,16 @@ public:
 
         // Clear any stale record registered under a different fabric's credentials.
         // Use Clear (not RemoveHostAndServices) — see srpServiceRemove() for why.
+        // NOTE: Clear resets the SRP client's host state (hostname pointer and
+        // auto-host-address mode) in addition to the service list, so we must
+        // call setupSrpHost() before trySrpServiceAdd() or AddService will fail.
         if (s_srp.added) {
             s_srp.added = false;
             otSrpClientClearHostAndServices(ot);
             ESP_LOGI(kTag, "SRP: cleared old record for fabric update");
         }
+
+        setupSrpHost(ot);
 
         // Re-register immediately using the specific newly committed fabric so
         // the OTBR has the correct <CFID>-<NodeId>._matter._tcp entry before
@@ -473,16 +494,12 @@ extern "C" void app_main()
             return;
         }
 
-        // Build hostname from the 802.15.4 extended address (16 lowercase hex chars).
-        // OpenThread holds a pointer — the buffer must be static.
-        static char srpHostname[17];
-        const otExtAddress *ext = otLinkGetExtendedAddress(instance);
-        snprintf(srpHostname, sizeof(srpHostname), "%02x%02x%02x%02x%02x%02x%02x%02x",
-                 ext->m8[0], ext->m8[1], ext->m8[2], ext->m8[3],
-                 ext->m8[4], ext->m8[5], ext->m8[6], ext->m8[7]);
-        otSrpClientSetHostName(instance, srpHostname);
-        otSrpClientEnableAutoHostAddress(instance);
-        ESP_LOGI(kTag, "SRP: hostname '%s', auto-address enabled", srpHostname);
+        // Configure SRP host name (derived from the 802.15.4 extended address)
+        // and enable auto-host-address mode.  The buffer lives in s_srp so the
+        // pointer remains valid for the lifetime of the SRP client session and
+        // setupSrpHost() can re-apply it after otSrpClientClearHostAndServices().
+        setupSrpHost(instance);
+        ESP_LOGI(kTag, "SRP: hostname '%s', auto-address enabled", s_srp.hostname);
 
         // Register our FabricTable delegate so the SRP record is refreshed
         // immediately when addNoc commits a new fabric during commissioning.
