@@ -230,18 +230,47 @@ void trySrpServiceAdd(otInstance *ot)
     }
 }
 
-// Remove the _matter._tcp SRP service and host, instructing the OTBR to
-// withdraw the record.  Called when the CHIP fabric is removed so that stale
-// operational records are not left in the OTBR and proxied to mDNS.
+// Remove the _matter._tcp SRP service when the device is fully decommissioned.
 // Must be called from the CHIP/OpenThread task.
+//
+// Two important constraints:
+//
+//  1. kFabricRemoved fires for uncommitted (FailSafe-reverted) pending fabric
+//     entries too, not only on true "Remove Device" decommissions.  Only tear
+//     down the SRP service when ALL committed fabrics are gone.
+//
+//  2. otSrpClientRemoveHostAndServices() sends an SRP update and then triggers
+//     the CHIP SDK's OnSrpClientNotification callback.  That callback crashes
+//     (null function pointer at GenericThreadStackManagerImpl_OpenThread.hpp:1310)
+//     when it receives a removed service that it never registered internally
+//     (because the ESP32 DNS-SD layer uses esp_mdns, not SRP).  Use
+//     otSrpClientClearHostAndServices() instead — it discards local state
+//     immediately with no network message and no callback.  The OTBR will hold
+//     the record until its SRP lease expires, which is acceptable: the record's
+//     instance name is fabric-specific, so a new commissioner sees the new name.
 void srpServiceRemove(otInstance *ot)
 {
     if (!s_srp.added) return;
+
+    // Guard: only remove when NO committed fabric remains.
+    bool hasFabric = false;
+    for (const auto & f : chip::Server::GetInstance().GetFabricTable()) {
+        (void)f;
+        hasFabric = true;
+        break;
+    }
+    if (hasFabric) {
+        ESP_LOGI(kTag, "SRP: kFabricRemoved with committed fabric still present "
+                       "(FailSafe revert?), keeping SRP record");
+        return;
+    }
+
     s_srp.added = false;
-    // aRemoveKeyLease=false: keep the SRP key lease so re-registration is fast.
-    // aSendUnregister=true:  send an SRP update to withdraw the record from OTBR.
-    otSrpClientRemoveHostAndServices(ot, false, true);
-    ESP_LOGI(kTag, "SRP: withdrew _matter._tcp service '%s'", s_srp.instanceName);
+    // Clear local SRP state without sending a network unregister message.
+    // Avoids triggering OnSrpClientNotification with our non-SDK service.
+    otSrpClientClearHostAndServices(ot);
+    ESP_LOGI(kTag, "SRP: cleared _matter._tcp service '%s' (decommissioned)",
+             s_srp.instanceName);
 }
 
 // OpenThread state-change callback: fires when the Thread role changes.
@@ -283,16 +312,15 @@ void app_event_cb(const ChipDeviceEvent *event, intptr_t arg)
         break;
 
     case DevEvt::kFabricRemoved:
-        // Fired when a controller removes this device (e.g. "Remove Device" in HA).
-        // Explicitly withdraw the SRP service from the OpenThread client so the
-        // OTBR stops proxying the now-invalid _matter._tcp record to mDNS.
-        // Without this, stale operational records remain in the OTBR until reboot
-        // or the next explicit SRP update, allowing discovery of an unreachable node.
+        // Fired on both true decommissions ("Remove Device" in HA) and when the
+        // FailSafe timer reverts an uncommitted pending fabric entry.  srpServiceRemove()
+        // checks whether a committed fabric still exists before clearing the SRP record,
+        // so it is safe to call unconditionally here.
         chip::DeviceLayer::PlatformMgr().ScheduleWork([](intptr_t) {
             otInstance *ot = esp_openthread_get_instance();
             if (ot) srpServiceRemove(ot);
         }, 0);
-        ESP_LOGW(kTag, "Fabric removed — device decommissioned; re-commissioning required");
+        ESP_LOGW(kTag, "Fabric removed event (decommission or FailSafe revert)");
         break;
 
     case DevEvt::kCHIPoBLEAdvertisingChange:
