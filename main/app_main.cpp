@@ -1,4 +1,5 @@
 #include <driver/gpio.h>
+#include <esp_system.h>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_matter.h>
@@ -421,6 +422,45 @@ extern "C" void app_main()
     gpio_set_direction(GPIO_NUM_14, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_NUM_3,  0);
     gpio_set_level(GPIO_NUM_14, 1);
+
+    // Factory reset via BOOT button (GPIO9).
+    // Hold GPIO9 low for 5 s at startup to clear fabric/config state and
+    // reboot into commissioning mode.  GPIO9 is the active-low BOOT button
+    // on the XIAO ESP32-C6.
+    //
+    // Only the chip-config and chip-counters NVS namespaces are erased;
+    // chip-factory (discriminator, PAKE verifier, DAC) is intentionally
+    // preserved so the device can commission again with its original
+    // credentials.  Erasing the whole nvs_matter partition would destroy
+    // factory data that cannot be recovered without re-flashing.
+    gpio_set_direction(GPIO_NUM_9, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(GPIO_NUM_9, GPIO_PULLUP_ONLY);
+    if (gpio_get_level(GPIO_NUM_9) == 0) {
+        ESP_LOGW(kTag, "BOOT held — factory reset in 5 s, release to cancel");
+        for (int i = 5; i > 0; --i) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            if (gpio_get_level(GPIO_NUM_9) != 0) {
+                ESP_LOGI(kTag, "Factory reset cancelled");
+                goto skip_factory_reset;
+            }
+            ESP_LOGW(kTag, "Factory reset in %d s…", i - 1);
+        }
+        ESP_LOGW(kTag, "Clearing fabric/config state — preserving chip-factory");
+        // Mount the partition so we can open individual namespaces.
+        nvs_flash_init_partition("nvs_matter");
+        static const char *kClearNs[] = { "chip-config", "chip-counters" };
+        for (const char *ns : kClearNs) {
+            nvs_handle_t h;
+            if (nvs_open_from_partition("nvs_matter", ns, NVS_READWRITE, &h) == ESP_OK) {
+                nvs_erase_all(h);
+                nvs_commit(h);
+                nvs_close(h);
+                ESP_LOGI(kTag, "Factory reset: cleared '%s'", ns);
+            }
+        }
+        esp_restart();
+    }
+    skip_factory_reset:
 
     // General-purpose NVS partition: auto-erased on unrecoverable corruption.
     // Holds only non-Matter app state; safe to wipe because all Matter
