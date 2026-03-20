@@ -178,16 +178,25 @@ struct SrpCtx {
 
 // Try to add the _matter._tcp SRP service.
 // Must be called from the CHIP/OpenThread task (e.g. inside ScheduleWork).
-void trySrpServiceAdd(otInstance *ot)
+// preferIndex: if not kUndefinedFabricIndex, use that specific fabric (e.g.
+// the one just committed by addNoc) instead of falling back to the first entry.
+void trySrpServiceAdd(otInstance *ot,
+                      chip::FabricIndex preferIndex = chip::kUndefinedFabricIndex)
 {
     if (s_srp.added) return;
     if (otThreadGetDeviceRole(ot) <= OT_DEVICE_ROLE_DETACHED) return;
 
-    // Look up the first provisioned fabric to build the instance name.
+    // Prefer the specific fabric index when supplied (e.g. from OnFabricCommitted).
+    // Fall back to the first fabric in the table for the Thread-attach path.
     const chip::FabricInfo *fabric = nullptr;
-    for (const auto &f : chip::Server::GetInstance().GetFabricTable()) {
-        fabric = &f;
-        break;
+    if (preferIndex != chip::kUndefinedFabricIndex) {
+        fabric = chip::Server::GetInstance().GetFabricTable().FindFabricWithIndex(preferIndex);
+    }
+    if (!fabric) {
+        for (const auto &f : chip::Server::GetInstance().GetFabricTable()) {
+            fabric = &f;
+            break;
+        }
     }
     if (!fabric) {
         ESP_LOGD(kTag, "SRP service: no fabric yet, will retry on next Thread role change");
@@ -272,6 +281,43 @@ void srpServiceRemove(otInstance *ot)
     ESP_LOGI(kTag, "SRP: cleared _matter._tcp service '%s' (decommissioned)",
              s_srp.instanceName);
 }
+
+// FabricTable delegate: refreshes the SRP _matter._tcp record when a new NOC
+// is committed (addNoc / updateNoc succeeds, step 6 of the commissioning flow).
+//
+// Problem: the commissioner's "Reconnect" step (step 7) needs to resolve the
+// device's NEW operational address via DNS-SD/mDNS before it can open a CASE
+// session.  If the SRP record in OTBR still carries the OLD fabric's instance
+// name (<old-CFID>-<old-NodeId>._matter._tcp), DNS-SD resolution times out
+// (~35 s) and commissioning fails.
+//
+// OnFabricCommitted fires synchronously on the CHIP/OpenThread task immediately
+// after addNoc persists the fabric, giving us time to update the SRP record
+// before the CASE reconnect is attempted.
+class SrpFabricDelegate : public chip::FabricTable::Delegate
+{
+public:
+    void OnFabricCommitted(const chip::FabricTable &, chip::FabricIndex fabricIndex) override
+    {
+        otInstance *ot = esp_openthread_get_instance();
+        if (!ot) return;
+
+        // Clear any stale record registered under a different fabric's credentials.
+        // Use Clear (not RemoveHostAndServices) — see srpServiceRemove() for why.
+        if (s_srp.added) {
+            s_srp.added = false;
+            otSrpClientClearHostAndServices(ot);
+            ESP_LOGI(kTag, "SRP: cleared old record for fabric update");
+        }
+
+        // Re-register immediately using the specific newly committed fabric so
+        // the OTBR has the correct <CFID>-<NodeId>._matter._tcp entry before
+        // the commissioner's DNS-SD resolution attempt.
+        trySrpServiceAdd(ot, fabricIndex);
+    }
+};
+
+static SrpFabricDelegate s_fabricDelegate;
 
 // OpenThread state-change callback: fires when the Thread role changes.
 // Schedules trySrpServiceAdd on the CHIP task so we can safely access the
@@ -437,6 +483,10 @@ extern "C" void app_main()
         otSrpClientSetHostName(instance, srpHostname);
         otSrpClientEnableAutoHostAddress(instance);
         ESP_LOGI(kTag, "SRP: hostname '%s', auto-address enabled", srpHostname);
+
+        // Register our FabricTable delegate so the SRP record is refreshed
+        // immediately when addNoc commits a new fabric during commissioning.
+        chip::Server::GetInstance().GetFabricTable().AddFabricDelegate(&s_fabricDelegate);
 
         // Register our state-change callback to add _matter._tcp once Thread joins.
         // otSetStateChangedCallback maintains a list; adding ours does not remove
