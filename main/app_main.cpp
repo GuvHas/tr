@@ -123,7 +123,7 @@ void printCommissioningCodes()
     stuffBits(payload,  3, vid,          16);
     stuffBits(payload, 19, pid,          16);
     stuffBits(payload, 35, 0,             2);  // standard commissioning flow
-    stuffBits(payload, 37, 0x06,          8);  // BLE (bit1) + OnNetwork/IP (bit2)
+    stuffBits(payload, 37, 0x02,          8);  // BLE rendezvous (only supported commissioning transport)
     stuffBits(payload, 45, discriminator, 12);
     stuffBits(payload, 57, passcode,      27);
     // bits [84:87]: padding = 0 (already zero-initialised)
