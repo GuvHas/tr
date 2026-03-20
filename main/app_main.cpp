@@ -1,4 +1,5 @@
 #include <driver/gpio.h>
+#include <esp_system.h>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_matter.h>
@@ -421,6 +422,28 @@ extern "C" void app_main()
     gpio_set_direction(GPIO_NUM_14, GPIO_MODE_OUTPUT);
     gpio_set_level(GPIO_NUM_3,  0);
     gpio_set_level(GPIO_NUM_14, 1);
+
+    // Factory reset via BOOT button (GPIO9).
+    // Hold GPIO9 low for 5 s at startup to erase nvs_matter (fabric table,
+    // PASE verifier, ACL, group keys) and reboot into commissioning mode.
+    // GPIO9 is the active-low BOOT button on the XIAO ESP32-C6.
+    gpio_set_direction(GPIO_NUM_9, GPIO_MODE_INPUT);
+    gpio_set_pull_mode(GPIO_NUM_9, GPIO_PULLUP_ONLY);
+    if (gpio_get_level(GPIO_NUM_9) == 0) {
+        ESP_LOGW(kTag, "BOOT held — factory reset in 5 s, release to cancel");
+        for (int i = 5; i > 0; --i) {
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            if (gpio_get_level(GPIO_NUM_9) != 0) {
+                ESP_LOGI(kTag, "Factory reset cancelled");
+                goto skip_factory_reset;
+            }
+            ESP_LOGW(kTag, "Factory reset in %d s…", i - 1);
+        }
+        ESP_LOGW(kTag, "Erasing nvs_matter — device will reboot into commissioning mode");
+        nvs_flash_erase_partition("nvs_matter");
+        esp_restart();
+    }
+    skip_factory_reset:
 
     // General-purpose NVS partition: auto-erased on unrecoverable corruption.
     // Holds only non-Matter app state; safe to wipe because all Matter
