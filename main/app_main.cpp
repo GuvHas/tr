@@ -424,9 +424,15 @@ extern "C" void app_main()
     gpio_set_level(GPIO_NUM_14, 1);
 
     // Factory reset via BOOT button (GPIO9).
-    // Hold GPIO9 low for 5 s at startup to erase nvs_matter (fabric table,
-    // PASE verifier, ACL, group keys) and reboot into commissioning mode.
-    // GPIO9 is the active-low BOOT button on the XIAO ESP32-C6.
+    // Hold GPIO9 low for 5 s at startup to clear fabric/config state and
+    // reboot into commissioning mode.  GPIO9 is the active-low BOOT button
+    // on the XIAO ESP32-C6.
+    //
+    // Only the chip-config and chip-counters NVS namespaces are erased;
+    // chip-factory (discriminator, PAKE verifier, DAC) is intentionally
+    // preserved so the device can commission again with its original
+    // credentials.  Erasing the whole nvs_matter partition would destroy
+    // factory data that cannot be recovered without re-flashing.
     gpio_set_direction(GPIO_NUM_9, GPIO_MODE_INPUT);
     gpio_set_pull_mode(GPIO_NUM_9, GPIO_PULLUP_ONLY);
     if (gpio_get_level(GPIO_NUM_9) == 0) {
@@ -439,8 +445,19 @@ extern "C" void app_main()
             }
             ESP_LOGW(kTag, "Factory reset in %d s…", i - 1);
         }
-        ESP_LOGW(kTag, "Erasing nvs_matter — device will reboot into commissioning mode");
-        nvs_flash_erase_partition("nvs_matter");
+        ESP_LOGW(kTag, "Clearing fabric/config state — preserving chip-factory");
+        // Mount the partition so we can open individual namespaces.
+        nvs_flash_init_partition("nvs_matter");
+        static const char *kClearNs[] = { "chip-config", "chip-counters" };
+        for (const char *ns : kClearNs) {
+            nvs_handle_t h;
+            if (nvs_open_from_partition("nvs_matter", ns, NVS_READWRITE, &h) == ESP_OK) {
+                nvs_erase_all(h);
+                nvs_commit(h);
+                nvs_close(h);
+                ESP_LOGI(kTag, "Factory reset: cleared '%s'", ns);
+            }
+        }
         esp_restart();
     }
     skip_factory_reset:
